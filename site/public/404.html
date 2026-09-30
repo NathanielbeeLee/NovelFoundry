@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="robots" content="noindex" />
+    <title>Opening NovelFoundry documentation...</title>
+    <script>
+      (function () {
+        var base = "__SITE_BASE_PATH__";
+        var location = window.location;
+        var path = location.pathname;
+        if (path.indexOf(base) === 0) {
+          path = path.slice(base.length) || "/";
+        }
+        var target = path + location.search + location.hash;
+        location.replace(base + "/?p=" + encodeURIComponent(target));
+      })();
+    </script>
+  </head>
+  <body></body>
+</html>

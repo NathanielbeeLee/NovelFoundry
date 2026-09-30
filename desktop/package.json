@@ -1,0 +1,32 @@
+{
+  "name": "@novelfoundry/desktop",
+  "version": "0.4.8",
+  "private": true,
+  "license": "AGPL-3.0-only",
+  "author": "NovelFoundry contributors",
+  "description": "Windows desktop workspace for NovelFoundry",
+  "productName": "NovelFoundry",
+  "main": "dist/main.js",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "prepare:runtime": "node scripts/ensure-electron-runtime.cjs --install",
+    "verify:runtime": "node scripts/ensure-electron-runtime.cjs",
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "dev": "pnpm run prepare:runtime && pnpm run build && electron dist/main.js",
+    "start": "pnpm run prepare:runtime && electron dist/main.js"
+  },
+  "dependencies": {
+    "@novelfoundry/server": "workspace:*",
+    "better-sqlite3": "^12.6.2",
+    "electron-updater": "^6.6.2"
+  },
+  "devDependencies": {
+    "@types/node": "^25.3.3",
+    "electron": "^35.7.5",
+    "electron-builder": "^26.1.0",
+    "typescript": "^5.9.3"
+  }
+}

@@ -1,0 +1,35 @@
+name: Bug report
+description: Report a reproducible problem in the current project.
+title: "[Bug] "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: Remove API keys, private novels, backups, and personal data before submitting.
+  - type: input
+    id: version
+    attributes:
+      label: Commit or version
+      description: Give the commit, release, or desktop build where the problem occurs.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Reproduction steps
+      description: List the smallest sequence that reproduces the problem.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior and logs
+      description: Include safe, redacted logs only.
+    validations:
+      required: true

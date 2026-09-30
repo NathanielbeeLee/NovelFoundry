@@ -1,0 +1,54 @@
+# Dependencies and generated build output
+node_modules/
+dist/
+*.tsbuildinfo
+.turbo/
+coverage/
+desktop/build/
+desktop/runtime-migration-smoke/
+site/public/sitemap.xml
+
+# Local configuration; publish only credential-free examples
+.env
+.env.*
+!.env.example
+
+# Local application data, backups, and temporary database work
+*.db
+*.db-journal
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite-journal
+*.sqlite-shm
+*.sqlite-wal
+# Prisma's SQLite migration directory contains maintained SQL source.
+!server/src/prisma/migrations.sqlite/
+server/tmp/
+server/tmp_*.js
+server/storage/
+server/prisma-diff-migrations-to-schema.sql
+.codex-backups/
+
+# Developer tools and machine-specific state
+.agents/
+.claude/
+.codex/
+.serena/
+.spec-workflow/
+.codegraph/
+.trae/
+.cursor/
+.idea/
+.vscode/
+.history/
+.histyory/
+.logs/
+.tmp/
+.cache/
+.DS_Store
+
+# Private source-comparison working records
+docs/upstream-watch/
+.local-upstream-watch/
+【任务入口】上游更新与竞品吸纳.md
