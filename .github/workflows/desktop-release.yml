@@ -1,0 +1,71 @@
+name: Desktop Release
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  publish-release:
+    if: ${{ vars.NOVELFOUNDRY_PUBLICATION_ENABLED == 'true' }}
+    runs-on: windows-latest
+    env:
+      NOVELFOUNDRY_RELEASE_CHANNEL: release
+      NOVELFOUNDRY_ALLOW_UNSIGNED_RELEASE: "true"
+      NOVELFOUNDRY_GITHUB_OWNER: ${{ github.repository_owner }}
+      NOVELFOUNDRY_GITHUB_REPO: ${{ github.event.repository.name }}
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      CSC_LINK: ${{ secrets.WINDOWS_CSC_LINK }}
+      CSC_KEY_PASSWORD: ${{ secrets.WINDOWS_CSC_KEY_PASSWORD }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Verify release tag and repository
+        run: node scripts/verify-desktop-release-ref.cjs
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 10.6.0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Setup Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install desktop icon tooling
+        run: python -m pip install --disable-pip-version-check pillow
+
+      - name: Regenerate desktop icon assets
+        run: python desktop/scripts/generate-desktop-icons.py
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Build and stage desktop app
+        env:
+          VITE_PUBLIC_REPOSITORY_URL: https://github.com/${{ github.repository }}
+        run: pnpm stage:desktop
+
+      - name: Verify packaged desktop layout
+        run: pnpm verify:desktop-package:reuse-stage
+
+      - name: Publish desktop release to GitHub Releases
+        run: pnpm publish:desktop:release:reuse-stage
+
+      - name: Update GitHub release notes
+        run: node scripts/update-desktop-release-notes.cjs

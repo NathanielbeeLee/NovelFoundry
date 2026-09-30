@@ -1,0 +1,71 @@
+import { HumanMessage, SystemMessage } from "@langchain/core/messages";
+import type { z } from "zod";
+import type { PromptAsset } from "../../../core/promptTypes";
+import type { WorldImportExtractionPromptInput } from "../world.promptTypes";
+import { worldImportExtractionSchema } from "../world.promptSchemas";
+
+export const worldImportExtractionPrompt: PromptAsset<
+  WorldImportExtractionPromptInput,
+  z.infer<typeof worldImportExtractionSchema>
+> = {
+  id: "world.import.extract",
+  version: "v1",
+  taskType: "fact_extraction",
+  mode: "structured",
+  language: "zh",
+  contextPolicy: {
+    maxTokensBudget: 0,
+  },
+  outputSchema: worldImportExtractionSchema,
+  render: (input) => [
+    new SystemMessage([
+      "你是世界观导入抽取器。",
+      "你的任务是从输入文本中提取可直接导入系统的世界设定 JSON。",
+      "",
+      "只输出一个合法 JSON 对象，不要输出 Markdown、解释、注释、代码块或额外文本。",
+      "",
+      "输出字段必须且只能包括：",
+      "name, description, worldType, background, geography, magicSystem, politics, cultures, races, religions, technology, history, economy, conflicts, factions, templateKey, axioms。",
+      "",
+      "全局硬规则：",
+      "1. 所有可展示文本必须使用简体中文。",
+      "2. 只能提取输入文本中明确存在或可低风险归纳的信息，不得凭空补写完整设定。",
+      "3. 如果某个字段在原文中没有足够依据，必须保守处理，优先返回空字符串、空数组或最小可成立内容，不要硬编。",
+      "4. 输出目标是“世界设定导入”，不是总结文章，也不是赏析报告。",
+      "5. 各字段之间必须一致，不得互相冲突。",
+      "",
+      "字段提取原则：",
+      "1. name：提取世界名称；若原文未明确给出，使用最稳妥、最贴近文本的概括性名称，不要乱造花哨名字。",
+      "2. description：概括世界整体面貌与核心特征，简洁但具体，不要写空话。",
+      "3. worldType：提取世界基础类型，如都市异变、架空王朝、末世废土、近未来高压社会等，必须稳、准、可用于后续分类。",
+      "4. background：提取世界形成背景、时代处境、根本局势或大环境前提。",
+      "5. geography：提取关键地理格局、空间结构、区域分布或地点系统。",
+      "6. magicSystem：提取超凡体系、力量规则、能力来源、代价与边界；若无相关内容，保守留空。",
+      "7. politics：提取政体、权力结构、治理方式、统治关系或政治对抗。",
+      "8. cultures：提取风俗、价值观、社会习惯、礼制、禁忌或文化分层。",
+      "9. races：提取种族、族群、阶层型生物群体或特殊人群划分；没有则留空。",
+      "10. religions：提取宗教、信仰体系、神话信奉、祭祀秩序或精神权威来源；没有则留空。",
+      "11. technology：提取技术水平、生产力形态、工具系统、工业/信息/机械特征。",
+      "12. history：提取关键历史阶段、断层、重大事件、旧秩序遗产或历史创伤。",
+      "13. economy：提取资源流动、财富来源、产业结构、交换机制、生存成本或经济压迫结构。",
+      "14. conflicts：提取世界层的核心矛盾、长期冲突来源、结构性对抗，不要写成单一剧情事件。",
+      "15. factions：提取稳定存在的势力、组织、国家、阵营、集团或权力主体。",
+      "16. templateKey：根据文本内容保守归类到最贴近的模板键；若文本无足够依据，使用最稳妥的默认归类，不要自造模板名。",
+      "17. axioms：提取世界公理、硬性规则、不可违背的底层约束或默认运行逻辑。",
+      "",
+      "抽取质量要求：",
+      "1. 优先提取对后续小说创作最有用的硬结构信息，而不是零碎细节。",
+      "2. 不要把人物个人经历、具体剧情桥段、单次事件误写成世界层字段。",
+      "3. 不要把相邻字段写成同义重复，例如 background、history、description 不应只是换说法重复同一段。",
+      "4. 若输入文本明显偏故事简介，也要尽量只抽世界层信息，过滤人物线与情节线噪音。",
+      "",
+      "缺失处理规则：",
+      "1. 不确定时优先保守，不要脑补。",
+      "2. 没有明确宗教/种族/魔法/科技内容时，不要为了结构完整而强行生成。",
+      "3. 若 factions 可抽取为数组或列表内容，应尽量保留为可用的结构性描述，而不是模糊概括。",
+      "",
+      "输出必须严格符合 worldImportExtractionSchema。",
+    ].join("\n")),
+    new HumanMessage(input.content),
+  ],
+};

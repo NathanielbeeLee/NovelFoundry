@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#147f91" />
+    <meta name="author" content="NovelFoundry contributors" />
+    <meta
+      name="description"
+      content="NovelFoundry helps writers plan, produce, review, and complete long-form fiction with recoverable AI workflows."
+    />
+    <meta property="og:title" content="NovelFoundry · Complete a novel with AI guidance" />
+    <meta
+      property="og:description"
+      content="Plan a book, write chapters, review quality, and continue after interruptions in one AI-assisted workspace."
+    />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="NovelFoundry" />
+    <meta property="og:locale" content="en_US" />
+    <meta name="twitter:card" content="summary" />
+    <meta name="twitter:title" content="NovelFoundry · Complete a novel with AI guidance" />
+    <meta
+      name="twitter:description"
+      content="An open-source workspace for planning, producing, and completing long-form fiction."
+    />
+    <link rel="icon" type="image/x-icon" href="./favicon.ico" />
+    <link rel="icon" type="image/png" sizes="32x32" href="./favicon-32.png" />
+    <title>NovelFoundry · Complete a novel with AI guidance</title>
+    <script>
+      (function () {
+        var base = "%BASE_URL%".replace(/\/$/, "");
+        var params = new URLSearchParams(window.location.search);
+        var fallbackPath = params.get("p");
+        if (fallbackPath) {
+          var normalizedFallback = fallbackPath.charAt(0) === "/" ? fallbackPath : "/" + fallbackPath;
+          window.history.replaceState(null, "", base + normalizedFallback);
+          return;
+        }
+        if (window.location.hash.indexOf("#/") === 0) {
+          window.history.replaceState(null, "", base + window.location.hash.slice(1));
+        }
+      })();
+    </script>
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "SoftwareApplication",
+        "name": "NovelFoundry",
+        "applicationCategory": "CreativeWork",
+        "operatingSystem": "Windows",
+        "description": "An AI-assisted workspace for planning, producing, and completing long-form fiction.",
+        "license": "https://www.gnu.org/licenses/agpl-3.0.html"
+      }
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

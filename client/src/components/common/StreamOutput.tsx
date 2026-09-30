@@ -1,0 +1,46 @@
+import { motion } from "framer-motion";
+import { Button } from "@/components/ui/button";
+import { useI18n } from "@/i18n";
+import MarkdownViewer from "./MarkdownViewer";
+
+interface StreamOutputProps {
+  isStreaming: boolean;
+  content: string;
+  onAbort?: () => void;
+  title?: string;
+  emptyText?: string;
+}
+
+export default function StreamOutput({ isStreaming, content, onAbort, title, emptyText }: StreamOutputProps) {
+  const { t } = useI18n();
+  const resolvedTitle = title ?? t("common.aiOutput");
+  const resolvedEmptyText = emptyText ?? t("common.streamWaiting");
+  const wordCount = content.trim().length;
+
+  return (
+    <motion.div
+      className="min-w-0 w-full max-w-full overflow-hidden rounded-md border bg-card p-4"
+      initial={{ opacity: 0, y: 6 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.2 }}
+    >
+      <div className="mb-3 flex items-center justify-between gap-2">
+        <span className="text-sm font-medium">{resolvedTitle}</span>
+        <div className="flex items-center gap-2">
+          {isStreaming ? (
+            <span className="text-xs text-muted-foreground">{t("common.generating")}</span>
+          ) : (
+            <span className="text-xs text-muted-foreground">{t("common.wordCount").replace("{count}", String(wordCount))}</span>
+          )}
+          {isStreaming && onAbort ? (
+            <Button size="sm" variant="secondary" onClick={onAbort}>
+              {t("common.stopGeneration")}
+            </Button>
+          ) : null}
+        </div>
+      </div>
+
+      <MarkdownViewer content={content || resolvedEmptyText} />
+    </motion.div>
+  );
+}

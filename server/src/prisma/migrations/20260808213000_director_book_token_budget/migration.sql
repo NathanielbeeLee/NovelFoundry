@@ -1,0 +1,3 @@
+ALTER TABLE "Novel"
+ADD COLUMN "directorTokenBudget" INTEGER,
+ADD COLUMN "directorTokenBudgetWarnRatio" DOUBLE PRECISION NOT NULL DEFAULT 0.8;

@@ -1,0 +1,24 @@
+name: Feature request
+description: Propose a focused improvement to the novel completion workflow.
+title: "[Feature] "
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: User problem
+      description: Which writing or production decision is currently difficult?
+    validations:
+      required: true
+  - type: textarea
+    id: outcome
+    attributes:
+      label: Desired outcome
+      description: Describe the result from a beginner's perspective.
+    validations:
+      required: true
+  - type: textarea
+    id: constraints
+    attributes:
+      label: Constraints or alternatives
+      description: Explain state, prompt, recovery, licensing, or compatibility constraints.
