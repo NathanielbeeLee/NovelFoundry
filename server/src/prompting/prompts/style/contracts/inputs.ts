@@ -29,6 +29,11 @@ export interface StyleRewritePromptInput {
   issuesBlock: string;
 }
 
+export interface StyleRewritePreservationPromptInput {
+  originalContent: string;
+  rewrittenContent: string;
+}
+
 export interface StyleProfileExtractionPromptInput {
   name: string;
   category?: string;

@@ -167,7 +167,7 @@ const detectionSchema = z.object({
 });
 
 const rewriteSchema = z.object({
-  content: z.string().trim().min(1),
+  content: z.string().refine((value) => value.trim().length > 0, "请输入待修正文。"),
   styleProfileId: z.string().trim().optional(),
   novelId: z.string().trim().optional(),
   chapterId: z.string().trim().optional(),
@@ -494,15 +494,27 @@ router.post("/style-detection/check", validate({ body: detectionSchema }), async
 });
 
 router.post("/style-detection/rewrite", validate({ body: rewriteSchema }), async (req, res, next) => {
+  const controller = new AbortController();
+  const onDisconnect = () => { if (!res.writableEnded) controller.abort(); };
+  req.once("aborted", onDisconnect);
+  res.once("close", onDisconnect);
+  if (req.aborted || res.destroyed) onDisconnect();
   try {
-    const data = await styleRewriteService.rewrite(req.body as z.infer<typeof rewriteSchema>);
+    const data = await styleRewriteService.rewrite({
+      ...(req.body as z.infer<typeof rewriteSchema>),
+      signal: controller.signal,
+    });
+    if (controller.signal.aborted) return;
     res.status(200).json({
       success: true,
       data,
-      message: "写法修正完成。",
+      message: "修订稿与剧情保真结果可供对照。",
     } satisfies ApiResponse<typeof data>);
   } catch (error) {
-    next(error);
+    if (!controller.signal.aborted) next(error);
+  } finally {
+    req.off("aborted", onDisconnect);
+    res.off("close", onDisconnect);
   }
 });
 

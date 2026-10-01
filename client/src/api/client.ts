@@ -27,6 +27,7 @@ const AUTO_DISMISS_SERVER_ERROR_TOAST = {
 apiClient.interceptors.response.use(
   (response) => response,
   (error: AxiosError<ApiResponse<unknown>>) => {
+    if (axios.isCancel(error)) return Promise.reject(error);
     const status = error.response?.status;
     const backendError = error.response?.data?.error;
     const backendMessage = error.response?.data?.message;

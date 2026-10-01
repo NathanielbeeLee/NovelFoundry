@@ -14,17 +14,16 @@ import {
   createStyleBinding,
   deleteStyleBinding,
   deleteStyleProfile,
-  detectStyleIssues,
   extractStyleFeaturesFromText,
   getAntiAiRules,
   getStyleBindings,
   getStyleProfiles,
   getStyleTemplates,
-  rewriteStyleIssues,
   testWriteWithStyleProfile,
   updateStyleProfile,
 } from "@/api/styleEngine";
 import { useLLMStore } from "@/store/llmStore";
+import { useStyleRewritePreview } from "@/features/styleRewritePreview";
 import WritingFormulaAdvancedWorkspace from "./components/WritingFormulaAdvancedWorkspace";
 import WritingFormulaBookStyleFlow from "./components/WritingFormulaBookStyleFlow";
 import WritingFormulaCleanPanel from "./components/WritingFormulaCleanPanel";
@@ -92,7 +91,6 @@ export default function WritingFormulaPage() {
   });
   const [testWriteOutput, setTestWriteOutput] = useState("");
   const [detectInput, setDetectInput] = useState("");
-  const [rewritePreview, setRewritePreview] = useState("");
 
   const activeMode = normalizeWritingFormulaMode(searchParams.get("mode"));
   const incomingProfileId = searchParams.get("profileId") ?? "";
@@ -150,6 +148,19 @@ export default function WritingFormulaPage() {
     () => profiles.find((item) => item.id === selectedProfileId) ?? null,
     [profiles, selectedProfileId],
   );
+  const cleanTest = useStyleRewritePreview({
+    content: detectInput,
+    styleProfileId: selectedProfile?.id,
+    previewAntiAiRuleIds: [],
+    provider: llm.provider,
+    model: llm.model,
+    configurationKey: JSON.stringify({
+      rules: antiAiRules,
+      profile: selectedProfile,
+      temperature: llm.temperature,
+      maxTokens: llm.maxTokens,
+    }),
+  }, { requireStyleProfile: true });
   const landingProfileItems = useMemo(
     () => buildLandingProfileItems({ profiles, allBindings, novelTitleMap }),
     [allBindings, novelTitleMap, profiles],
@@ -263,7 +274,6 @@ export default function WritingFormulaPage() {
   useEffect(() => {
     setTestWriteOutput("");
     setDetectInput("");
-    setRewritePreview("");
   }, [selectedProfileId]);
 
   useWritingFormulaDialogFocus({
@@ -440,63 +450,8 @@ export default function WritingFormulaPage() {
     onSuccess: (response) => setTestWriteOutput(response.data?.output ?? ""),
   });
 
-  const detectionMutation = useMutation({
-    mutationFn: () => {
-      if (!selectedProfileId) {
-        throw new Error("请先选择写法资产。");
-      }
-
-      return detectStyleIssues({
-        content: detectInput,
-        styleProfileId: selectedProfileId,
-        provider: llm.provider,
-        model: llm.model,
-        temperature: 0.2,
-      });
-    },
-  });
-
-  const rewriteMutation = useMutation({
-    mutationFn: async () => {
-      if (!selectedProfileId) {
-        throw new Error("请先选择写法资产。");
-      }
-
-      const report = detectionMutation.data?.data ?? (await detectStyleIssues({
-        content: detectInput,
-        styleProfileId: selectedProfileId,
-        provider: llm.provider,
-        model: llm.model,
-        temperature: 0.2,
-      })).data;
-
-      if (!report || report.violations.length === 0) {
-        return { data: { content: detectInput } };
-      }
-
-      return rewriteStyleIssues({
-        content: detectInput,
-        styleProfileId: selectedProfileId,
-        issues: report.violations.map((item) => ({
-          ruleName: item.ruleName,
-          excerpt: item.excerpt,
-          suggestion: item.suggestion,
-        })),
-        provider: llm.provider,
-        model: llm.model,
-        temperature: 0.5,
-      });
-    },
-    onSuccess: (response) => {
-      setRewritePreview(response.data?.content ?? "");
-      setMessage("修订稿已经生成，可以继续在去 AI 味里检查和调整。");
-    },
-  });
-
   useEffect(() => {
     testWriteMutation.reset();
-    detectionMutation.reset();
-    rewriteMutation.reset();
   }, [selectedProfileId]);
 
   return (
@@ -661,7 +616,7 @@ export default function WritingFormulaPage() {
           <DialogHeader className="border-b px-6 py-5 pr-14">
             <DialogTitle>去 AI 味</DialogTitle>
             <DialogDescription>
-              这里专门做正文检测和修正，不进入写法字段编辑，也不混入绑定和试写操作。
+              检查原文的 AI 味，生成候选修订稿，并核对剧情信息是否保留。
             </DialogDescription>
           </DialogHeader>
 
@@ -669,13 +624,13 @@ export default function WritingFormulaPage() {
             <WritingFormulaCleanPanel
               selectedProfile={selectedProfile}
               detectInput={detectInput}
-              detectionReport={detectionMutation.data?.data ?? null}
-              detectionPending={detectionMutation.isPending}
-              rewritePending={rewriteMutation.isPending}
-              rewritePreview={rewritePreview}
+              detectionReport={cleanTest.report}
+              detectionPending={cleanTest.detectionPending}
+              rewritePending={cleanTest.rewritePending}
+              rewritePreview={cleanTest.preview}
               onDetectInputChange={setDetectInput}
-              onDetect={() => detectionMutation.mutate()}
-              onRewrite={() => rewriteMutation.mutate()}
+              onDetect={cleanTest.detect}
+              onRewrite={cleanTest.rewrite}
             />
           </div>
         </DialogContent>

@@ -12,6 +12,7 @@ import type {
   StyleProfileFeature,
   StyleProfile,
   StyleRecommendationResult,
+  StyleRewriteResult,
   StyleTemplate,
 } from "@novelfoundry/shared/types/styleEngine";
 import type { CompiledStylePromptBlocks } from "@novelfoundry/shared/types/styleEngine";
@@ -301,8 +302,8 @@ export async function detectStyleIssues(payload: {
   provider?: string;
   model?: string;
   temperature?: number;
-}) {
-  const { data } = await apiClient.post<ApiResponse<StyleDetectionReport>>("/style-detection/check", payload);
+}, options?: { signal?: AbortSignal }) {
+  const { data } = await apiClient.post<ApiResponse<StyleDetectionReport>>("/style-detection/check", payload, options);
   return data;
 }
 
@@ -321,7 +322,7 @@ export async function rewriteStyleIssues(payload: {
   provider?: string;
   model?: string;
   temperature?: number;
-}) {
-  const { data } = await apiClient.post<ApiResponse<{ content: string }>>("/style-detection/rewrite", payload);
+}, options?: { signal?: AbortSignal }) {
+  const { data } = await apiClient.post<ApiResponse<StyleRewriteResult>>("/style-detection/rewrite", payload, options);
   return data;
 }

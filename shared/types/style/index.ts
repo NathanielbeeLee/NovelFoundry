@@ -3,6 +3,7 @@ export * from "./profile.js";
 export * from "./rules.js";
 export * from "./antiAiRules.js";
 export * from "./detection.js";
+export * from "./rewrite.js";
 export * from "./domain/rulePatch.js";
 export * from "./domain/presetSelection.js";
 export * from "./binding.js";

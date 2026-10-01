@@ -1,15 +1,13 @@
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { AntiAiRule } from "@novelfoundry/shared/types/styleEngine";
 import { Plus, ShieldCheck } from "lucide-react";
 import {
   createAntiAiRule,
-  detectStyleIssues,
   generateAntiAiRuleDraft,
   getAntiAiRules,
   getEffectiveAntiAiRules,
   getStyleProfiles,
-  rewriteStyleIssues,
   updateAntiAiRule,
 } from "@/api/styleEngine";
 import { queryKeys } from "@/api/queryKeys";
@@ -31,6 +29,7 @@ import AntiAiRuleDialog from "./components/AntiAiRuleDialog";
 import AntiAiRuleEffectTestCard from "./components/AntiAiRuleEffectTestCard";
 import AntiAiRuleList from "./components/AntiAiRuleList";
 import AntiAiRuleStats from "./components/AntiAiRuleStats";
+import { useStyleRewritePreview } from "@/features/styleRewritePreview";
 
 export default function AntiAiRulesPage() {
   const queryClient = useQueryClient();
@@ -43,7 +42,6 @@ export default function AntiAiRulesPage() {
   const [previewStyleProfileId, setPreviewStyleProfileId] = useState("");
   const [testingRuleIds, setTestingRuleIds] = useState<string[]>([]);
   const [testInput, setTestInput] = useState("");
-  const [rewritePreview, setRewritePreview] = useState("");
 
   const rulesQuery = useQuery({
     queryKey: queryKeys.styleEngine.antiAiRules,
@@ -98,6 +96,21 @@ export default function AntiAiRulesPage() {
       ];
     return Array.from(new Set(ids));
   }, [effective?.globalBaselineRules, previewStyleProfileId, testingRuleIds]);
+
+  const effectTest = useStyleRewritePreview({
+    content: testInput,
+    styleProfileId: previewStyleProfileId || undefined,
+    previewAntiAiRuleIds: testPreviewRuleIds,
+    provider: llm.provider,
+    model: llm.model,
+    configurationKey: JSON.stringify({
+      rules,
+      effective,
+      profile: profiles.find((profile) => profile.id === previewStyleProfileId),
+      temperature: llm.temperature,
+      maxTokens: llm.maxTokens,
+    }),
+  });
 
   const refreshRules = async () => {
     await Promise.all([
@@ -168,58 +181,6 @@ export default function AntiAiRulesPage() {
     },
     onError: (error) => toast.error(error instanceof Error ? error.message : "AI 生成草稿失败。"),
   });
-
-  const detectionMutation = useMutation({
-    mutationFn: () => detectStyleIssues({
-      content: testInput,
-      styleProfileId: previewStyleProfileId || undefined,
-      previewAntiAiRuleIds: testPreviewRuleIds,
-      provider: llm.provider,
-      model: llm.model,
-      temperature: 0.2,
-    }),
-    onSuccess: () => setRewritePreview(""),
-    onError: (error) => toast.error(error instanceof Error ? error.message : "检测失败。"),
-  });
-
-  const rewriteMutation = useMutation({
-    mutationFn: async () => {
-      const report = detectionMutation.data?.data ?? (await detectStyleIssues({
-        content: testInput,
-        styleProfileId: previewStyleProfileId || undefined,
-        previewAntiAiRuleIds: testPreviewRuleIds,
-        provider: llm.provider,
-        model: llm.model,
-        temperature: 0.2,
-      })).data;
-
-      if (!report || report.violations.length === 0) {
-        return { data: { content: testInput } };
-      }
-
-      return rewriteStyleIssues({
-        content: testInput,
-        styleProfileId: previewStyleProfileId || undefined,
-        previewAntiAiRuleIds: testPreviewRuleIds,
-        issues: report.violations.map((item) => ({
-          ruleName: item.ruleName,
-          excerpt: item.excerpt,
-          suggestion: item.suggestion,
-        })),
-        provider: llm.provider,
-        model: llm.model,
-        temperature: 0.5,
-      });
-    },
-    onSuccess: (response) => setRewritePreview(response.data?.content ?? ""),
-    onError: (error) => toast.error(error instanceof Error ? error.message : "修正失败。"),
-  });
-
-  useEffect(() => {
-    detectionMutation.reset();
-    rewriteMutation.reset();
-    setRewritePreview("");
-  }, [previewStyleProfileId, testPreviewRuleIds.join("|")]);
 
   const openCreateDialog = () => {
     setEditingRule(null);
@@ -307,15 +268,15 @@ export default function AntiAiRulesPage() {
           />
           <AntiAiRuleEffectTestCard
             content={testInput}
-            report={detectionMutation.data?.data ?? null}
-            rewritePreview={rewritePreview}
-            detectionPending={detectionMutation.isPending}
-            rewritePending={rewriteMutation.isPending}
+            report={effectTest.report}
+            rewritePreview={effectTest.preview}
+            detectionPending={effectTest.detectionPending}
+            rewritePending={effectTest.rewritePending}
             effectiveRuleCount={effective?.effectiveRules.length ?? 0}
             previewRules={testingRules}
             onContentChange={setTestInput}
-            onDetect={() => detectionMutation.mutate()}
-            onRewrite={() => rewriteMutation.mutate()}
+            onDetect={effectTest.detect}
+            onRewrite={effectTest.rewrite}
             onRemovePreviewRule={(ruleId) => setTestingRuleIds((prev) => prev.filter((item) => item !== ruleId))}
             onClearPreviewRules={() => setTestingRuleIds([])}
           />

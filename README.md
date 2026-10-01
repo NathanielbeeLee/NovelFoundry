@@ -287,5 +287,9 @@ are retained in [NOTICE](NOTICE).
 - Creative Hub distinguishes a saved reply, an approval request, a failed task,
   and stopped reception. Interrupted replies keep received text and offer a
   task-state refresh before you continue.
+- Style Engine and Anti-AI Rules rewrite previews compare the revision with
+  the original for changes to story facts, relationships, order, clues, and
+  uncertainty. Evidence and unfinished-check warnings help you keep the
+  original until you choose a revision.
 
 [Full update history](docs/releases/release-notes.md).

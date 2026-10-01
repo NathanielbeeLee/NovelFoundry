@@ -1,14 +1,15 @@
-import type { AntiAiRule, StyleDetectionReport } from "@novelfoundry/shared/types/styleEngine";
+import type { AntiAiRule, StyleDetectionReport, StyleRewriteResult } from "@novelfoundry/shared/types/styleEngine";
 import { FlaskConical, X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { severityLabels, typeLabels } from "../antiAiRulesPage.shared";
+import { StyleRewritePreview } from "@/features/styleRewritePreview";
 
 interface AntiAiRuleEffectTestCardProps {
   content: string;
   report: StyleDetectionReport | null;
-  rewritePreview: string;
+  rewritePreview: StyleRewriteResult | null;
   detectionPending: boolean;
   rewritePending: boolean;
   effectiveRuleCount: number;
@@ -22,6 +23,7 @@ interface AntiAiRuleEffectTestCardProps {
 
 export default function AntiAiRuleEffectTestCard(props: AntiAiRuleEffectTestCardProps) {
   const totalRuleCount = props.effectiveRuleCount + props.previewRules.length;
+  const busy = props.detectionPending || props.rewritePending;
 
   return (
     <Card>
@@ -31,7 +33,7 @@ export default function AntiAiRuleEffectTestCard(props: AntiAiRuleEffectTestCard
           效果测试
         </CardTitle>
         <CardDescription>
-          粘贴一段正文，检查规则会怎样判断 AI 味，并生成一版只用于预览的修订稿。
+          粘贴一段正文，检查原文的 AI 味，并生成候选修订稿，核对剧情信息是否保留。
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -83,20 +85,22 @@ export default function AntiAiRuleEffectTestCard(props: AntiAiRuleEffectTestCard
         />
 
         <div className="flex flex-wrap gap-2">
-          <Button type="button" onClick={props.onDetect} disabled={props.detectionPending || !props.content.trim()}>
+          <Button type="button" onClick={props.onDetect} disabled={busy || !props.content.trim()}>
             {props.detectionPending ? "检测中..." : "执行检测"}
           </Button>
-          <Button type="button" variant="secondary" onClick={props.onRewrite} disabled={props.rewritePending || !props.content.trim()}>
-            {props.rewritePending ? "修正中..." : "一键修正"}
+          <Button type="button" variant="secondary" onClick={props.onRewrite} disabled={busy || !props.content.trim()}>
+            {props.rewritePending ? "修文与保真检查中..." : "生成修订稿并检查"}
           </Button>
         </div>
 
         {props.report ? (
           <div className="space-y-3 rounded-md border p-4">
             <div className="space-y-1">
-              <div className="font-medium text-foreground">风险分：{props.report.riskScore}</div>
+              <div className="font-medium text-foreground">原文规则检测</div>
+              <div className="text-sm text-foreground">原文 AI 味风险分：{props.report.riskScore}</div>
               <div className="text-sm leading-6 text-muted-foreground">{props.report.summary}</div>
               <div className="text-xs text-muted-foreground">命中规则：{props.report.appliedRuleIds.length}</div>
+              <div className="text-xs text-muted-foreground">此结果来自原文，不代表修订稿的文风质量。</div>
             </div>
             {props.report.violations.length > 0 ? (
               <div className="space-y-2">
@@ -117,19 +121,14 @@ export default function AntiAiRuleEffectTestCard(props: AntiAiRuleEffectTestCard
               </div>
             ) : (
               <div className="rounded-md border border-dashed p-3 text-sm text-muted-foreground">
-                没有发现值得进入修正流程的问题。
+                原文没有命中需要修文的规则。
               </div>
             )}
           </div>
         ) : null}
 
         {props.rewritePreview ? (
-          <div className="space-y-2">
-            <div className="text-sm font-medium text-foreground">修订稿预览</div>
-            <pre className="max-h-[360px] overflow-auto whitespace-pre-wrap rounded-md border bg-muted/20 p-4 text-sm leading-7">
-              {props.rewritePreview}
-            </pre>
-          </div>
+          <StyleRewritePreview result={props.rewritePreview} />
         ) : null}
       </CardContent>
     </Card>

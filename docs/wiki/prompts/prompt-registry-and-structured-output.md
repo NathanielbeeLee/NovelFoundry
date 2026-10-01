@@ -59,6 +59,47 @@ An absent mention of a foreshadowing thread in one range is insufficient to
 declare it lost. Reviews may propose future guidance, but do not silently
 rewrite chapters or turn a local style issue into a global stop.
 
+## Style rewrite preview preservation
+
+The Anti-AI Rules effect-test preview and Style Engine clean-prose preview
+compare the full original and rewrite candidate through
+`style.rewrite.preservation@v1`. This is an independent AI
+judgment of established facts, relationships, event and reveal order,
+foreshadowing, uncertainty and character knowledge, and narrative intent. It
+does not grade naturalness or claim to prove absolute semantic equivalence.
+Literal quotation checks only ground the AI's evidence in the supplied text;
+they are not keyword-based semantic decisions.
+
+The shared preview contract retains `content` as the candidate, adds the exact
+`originalContent`, and returns one preservation status:
+
+| Status | Meaning and handling |
+| --- | --- |
+| `preserved` | Complete AI comparison with no semantic-change findings; still a preview for the author to inspect. |
+| `changed` | Definite changes with grounded evidence and guidance; retain the original as the trusted text. |
+| `unverified` | Partial or uncertain review, unavailable or invalid output, input limit, timeout, or cancellation; never display this as a pass. |
+
+Limit the complete pair to 24,000 JavaScript string units. Never slice either
+manuscript to fit and then return a full-coverage result. The asset additionally
+guards its rendered input at 12,000 estimated tokens and caps output at 2,600
+tokens. The comparison has a 60-second deadline, no JSON repair or semantic
+retry, and propagates the shared abort signal to the adapter. A comparison
+failure preserves the candidate and original for review; generation with no
+usable candidate fails instead.
+
+HTTP success means the preview is available, not that preservation passed. The
+client binds reports and previews to captured source text, rules, profile and
+model selection, aborts invalidated requests, and rejects late responses. A
+content-only legacy response is unverified. The original-text detection score
+must never be presented as the candidate's quality score. No detected issues
+means keep the original, not fabricate a successful rewrite assessment.
+
+This contract applies only to `POST /style-detection/rewrite`. It writes no
+canonical content, does not change trial writing or chapter-editor rewriting,
+and does not activate an old production style runner. Preview findings never
+enter global director replanning, chapter acceptance, or a second production
+loop. See the [owned module boundary](../../../server/src/services/styleEngine/rewrite/README.md).
+
 ## Source-independent writing guidance
 
 Style profiles may contain reference titles, names, and examples. Keep those

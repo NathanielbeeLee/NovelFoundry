@@ -5,6 +5,8 @@ The registry imports the stable `style.prompts.ts` facade.
 - `contracts/inputs.ts` defines asset input types.
 - `recommendation/` selects profiles and rules.
 - `writing/` shapes prose guidance.
+- `preservation/` compares the complete original and rewrite candidate without
+  judging remaining prose quality.
 - `extraction/` extracts structured style features.
 - `curation/` enriches, names, and classifies profiles.
 
@@ -19,3 +21,11 @@ original profile and compiled blocks remain available for inspection. The
 an explicitly empty result. Keep source names out of executable guidance and
 preserve stable rule IDs when displaying safe catalog aliases. See the
 [generation boundary](../../../../../docs/wiki/prompts/prompt-registry-and-structured-output.md#source-independent-writing-guidance).
+
+`style.rewrite.preservation@v1` is a structured review with verbatim evidence.
+It receives only the two complete manuscripts, uses no context shortening, and
+rejects a pass with partial coverage or findings. Missing or ungrounded output
+is unfinished, not successful. JSON repair and semantic retries are disabled;
+the rewrite application owns the complete-pair size guard and deadline. It does
+not rewrite prose, adopt candidates, or decide global director status. See the
+[preview boundary](../../../services/styleEngine/rewrite/README.md).

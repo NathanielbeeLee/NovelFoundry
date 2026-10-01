@@ -1,6 +1,7 @@
-import type { StyleDetectionReport, StyleProfile } from "@novelfoundry/shared/types/styleEngine";
+import type { StyleDetectionReport, StyleProfile, StyleRewriteResult } from "@novelfoundry/shared/types/styleEngine";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { StyleRewritePreview } from "@/features/styleRewritePreview";
 
 interface WritingFormulaCleanPanelProps {
   selectedProfile: StyleProfile | null;
@@ -8,7 +9,7 @@ interface WritingFormulaCleanPanelProps {
   detectionReport: StyleDetectionReport | null;
   detectionPending: boolean;
   rewritePending: boolean;
-  rewritePreview: string;
+  rewritePreview: StyleRewriteResult | null;
   onDetectInputChange: (value: string) => void;
   onDetect: () => void;
   onRewrite: () => void;
@@ -28,6 +29,7 @@ export default function WritingFormulaCleanPanel(props: WritingFormulaCleanPanel
   } = props;
 
   const antiAiRuleNames = selectedProfile?.antiAiRules.map((rule) => rule.name) ?? [];
+  const busy = detectionPending || rewritePending;
 
   return (
     <Card>
@@ -37,7 +39,7 @@ export default function WritingFormulaCleanPanel(props: WritingFormulaCleanPanel
       <CardContent className="space-y-5">
         {selectedProfile ? (
           <div className="rounded-2xl border bg-slate-50/70 px-4 py-3 text-sm leading-7 text-slate-700">
-            当前按「{selectedProfile.name}」这套写法来做检测和修正。这里只处理正文的 AI 味，不会改写法字段本身。
+            按「{selectedProfile.name}」这套写法检测正文，生成候选修订稿，并核对剧情信息是否保留。
           </div>
         ) : (
           <div className="rounded-2xl border bg-slate-50/70 px-4 py-3 text-sm leading-7 text-slate-700">
@@ -85,19 +87,21 @@ export default function WritingFormulaCleanPanel(props: WritingFormulaCleanPanel
           />
 
           <div className="flex flex-wrap gap-2">
-            <Button onClick={onDetect} disabled={detectionPending || !selectedProfile || !detectInput.trim()}>
-              执行检测
+            <Button onClick={onDetect} disabled={busy || !selectedProfile || !detectInput.trim()}>
+              {detectionPending ? "检测中..." : "执行检测"}
             </Button>
-            <Button variant="secondary" onClick={onRewrite} disabled={rewritePending || !selectedProfile || !detectInput.trim()}>
-              一键修正
+            <Button variant="secondary" onClick={onRewrite} disabled={busy || !selectedProfile || !detectInput.trim()}>
+              {rewritePending ? "修文与保真检查中..." : "生成修订稿并检查"}
             </Button>
           </div>
 
           {detectionReport ? (
             <div className="space-y-3 rounded-2xl border p-4 text-sm">
               <div className="space-y-1">
-                <div className="font-medium text-slate-900">风险分：{detectionReport.riskScore}</div>
+                <div className="font-medium text-slate-900">原文规则检测</div>
+                <div className="text-slate-900">原文 AI 味风险分：{detectionReport.riskScore}</div>
                 <div className="leading-6 text-slate-600">{detectionReport.summary}</div>
+                <div className="text-xs text-slate-500">此结果来自原文，不代表修订稿的文风质量。</div>
               </div>
               <div className="space-y-2">
                 {detectionReport.violations.map((item, index) => (
@@ -109,6 +113,9 @@ export default function WritingFormulaCleanPanel(props: WritingFormulaCleanPanel
                     </div>
                   </div>
                 ))}
+                {detectionReport.violations.length === 0 ? (
+                  <div className="rounded-xl border border-dashed px-3 py-3 text-sm leading-6 text-slate-500">原文没有命中需要修文的规则。</div>
+                ) : null}
               </div>
             </div>
           ) : (
@@ -118,12 +125,7 @@ export default function WritingFormulaCleanPanel(props: WritingFormulaCleanPanel
           )}
 
           {rewritePreview ? (
-            <div className="space-y-2">
-              <div className="text-sm font-medium text-slate-900">修正结果</div>
-              <pre className="max-h-[320px] overflow-auto whitespace-pre-wrap rounded-xl border bg-muted/20 p-4 text-sm">
-                {rewritePreview}
-              </pre>
-            </div>
+            <StyleRewritePreview result={rewritePreview} />
           ) : null}
         </div>
       </CardContent>

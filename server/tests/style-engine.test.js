@@ -607,6 +607,11 @@ test("StyleRewriteService includes preview anti-ai rules in the repair prompt", 
       yield new AIMessageChunk("半晌才开口。");
     },
   }));
+  promptRunner.setPromptRunnerStructuredInvokerForTests(async () => ({
+    data: { status: "uncertain", coverage: "complete", summary: "人物领悟是否保留需要确认。", findings: [] },
+    repairUsed: false,
+    repairAttempts: 0,
+  }));
 
   try {
     const result = await new StyleRewriteService().rewrite({
@@ -622,9 +627,12 @@ test("StyleRewriteService includes preview anti-ai rules in the repair prompt", 
     assert.match(capturedPrompt, /Temporary anti-AI test rules/);
     assert.match(capturedPrompt, /Preview rewrite instruction/);
     assert.equal(result.content, "他扶住桌沿，半晌才开口。");
+    assert.equal(result.originalContent, "他突然明白了一切。");
+    assert.equal(result.preservation.status, "unverified");
   } finally {
     prisma.antiAiRule.findMany = originalFindMany;
     promptRunner.setPromptRunnerLLMFactoryForTests();
+    promptRunner.setPromptRunnerStructuredInvokerForTests();
   }
 });
 
@@ -952,7 +960,11 @@ test("style engine routes return mocked payloads", async () => {
   };
   StyleRewriteService.prototype.rewrite = async (input) => {
     capturedRewriteInput = input;
-    return { content: "他扶住桌沿，低声开口。" };
+    return {
+      content: "他扶住桌沿，低声开口。",
+      originalContent: input.content,
+      preservation: { status: "unverified", reason: "unavailable", summary: "检查未完成。", findings: [] },
+    };
   };
 
   const app = createApp();
@@ -1077,7 +1089,7 @@ test("style engine routes return mocked payloads", async () => {
       body: JSON.stringify({
         styleProfileId: fakeProfile.id,
         previewAntiAiRuleIds: ["rule-preview"],
-        content: "他感到一阵疲惫。",
+        content: "  他感到一阵疲惫。\n",
         issues: [{
           ruleName: "禁止解释型心理描写",
           excerpt: "他感到一阵疲惫。",
@@ -1086,8 +1098,12 @@ test("style engine routes return mocked payloads", async () => {
       }),
     });
     assert.equal(rewriteResponse.status, 200);
-    assert.equal((await rewriteResponse.json()).data.content, "他扶住桌沿，低声开口。");
+    const rewritePayload = (await rewriteResponse.json()).data;
+    assert.equal(rewritePayload.content, "他扶住桌沿，低声开口。");
+    assert.equal(rewritePayload.originalContent, "  他感到一阵疲惫。\n");
+    assert.equal(rewritePayload.preservation.status, "unverified");
     assert.deepEqual(capturedRewriteInput.previewAntiAiRuleIds, ["rule-preview"]);
+    assert.equal(capturedRewriteInput.signal.aborted, false);
   } finally {
     Object.assign(StyleProfileService.prototype, {
       listProfiles: originalMethods.listProfiles,
