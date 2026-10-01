@@ -111,6 +111,7 @@ function buildBookContractBlock(writeContext: ChapterWriteContext): PromptContex
     group: "book_contract",
     priority: 100,
     required: true,
+    allowSummary: false,
     content: renderBookContractText(writeContext.bookContract),
   });
 }

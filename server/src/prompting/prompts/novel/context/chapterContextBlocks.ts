@@ -189,6 +189,7 @@ function buildIncrementalRoundContextBlock(
     group: "incremental_round_context",
     priority: 99,
     required: true,
+    allowSummary: false,
     content,
   });
 }
@@ -257,6 +258,7 @@ export function buildChapterWriterContextBlocks(
       group: "chapter_mission",
       priority: 100,
       required: true,
+      allowSummary: false,
       content: [
         `章节任务：${writeContext.chapterMission.title}`,
         `目标：${writeContext.chapterMission.objective}`,
@@ -358,6 +360,7 @@ export function buildChapterWriterContextBlocks(
       group: "state_goal",
       priority: 97,
       required: Boolean(writeContext.chapterStateGoal),
+      allowSummary: false,
       content: writeContext.chapterStateGoal
         ? [
              `State goal: ${writeContext.chapterStateGoal.summary}`,
@@ -530,6 +533,7 @@ export function buildChapterReviewContextBlocks(reviewContext: ChapterReviewCont
       group: "structure_obligations",
       priority: 94,
       required: true,
+      allowSummary: false,
       content: toListBlock("Structure obligations", reviewContext.structureObligations),
     }),
     createContextBlock({
@@ -555,6 +559,7 @@ export function buildChapterRepairContextBlocks(repairContext: ChapterRepairCont
       group: "repair_issues",
       priority: 100,
       required: true,
+      allowSummary: false,
       content: repairContext.issues.length > 0
         ? [
             "Repair issues:",
@@ -570,6 +575,7 @@ export function buildChapterRepairContextBlocks(repairContext: ChapterRepairCont
       group: "structure_obligations",
       priority: 95,
       required: true,
+      allowSummary: false,
       content: toListBlock("Structure obligations", repairContext.structureObligations),
     }),
     createContextBlock({
@@ -577,6 +583,7 @@ export function buildChapterRepairContextBlocks(repairContext: ChapterRepairCont
       group: "repair_boundaries",
       priority: 96,
       required: true,
+      allowSummary: false,
       content: toListBlock("Allowed edit boundaries", repairContext.allowedEditBoundaries),
     }),
     createContextBlock({

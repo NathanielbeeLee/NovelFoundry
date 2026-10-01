@@ -30,6 +30,27 @@ reader-knowledge boundary, or source chapter. A missing payoff should be
 diagnosed from the ledger and context trace before changing retrieval ranking
 or increasing prompt size.
 
+## Hard constraints and reference budgets
+
+Chapter writing, review, and repair must preserve the complete rendered book
+contract, chapter mission, state goals and protected secrets, structure
+obligations, repair issues, and allowed edit boundaries. Incremental writing
+also preserves its current-round instruction. Both the runtime resolver and
+the generation-package entry point mark these blocks as non-summarizable,
+alongside existing character facts, payoff directives, and production rules.
+
+These blocks can place prohibitions after descriptive material. Truncating
+their trailing lines would change the writing contract, even when the block
+remains present in a trace. Required presence and permission to summarize are
+separate properties; a required constraint block must declare both.
+
+The context-selection budget is soft for required blocks. If they exceed that
+budget, retain the constraints and omit lower-priority optional references;
+do not add a chapter quality failure or director pause solely for this soft
+overflow. This does not enlarge the model's actual input window. Investigate
+oversized contracts through rendered-input diagnostics and context ownership
+rather than silently removing constraints or introducing another memory store.
+
 ## Index and lifecycle rules
 
 A document version must be indexed before it is searchable. Archiving is

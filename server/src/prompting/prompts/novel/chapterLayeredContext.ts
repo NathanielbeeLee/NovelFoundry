@@ -552,6 +552,7 @@ export function getAllContextBlocks(contextPackage: GenerationContextPackage): P
       group: "book_contract",
       priority: 100,
       required: true,
+      allowSummary: false,
       content: renderBookContractText(writeContext.bookContract),
     }),
     ...buildChapterWriterContextBlocks(writeContext),

@@ -46,9 +46,10 @@ function isKimiFixedTemperatureModel(normalizedModel: string): boolean {
 }
 
 export function getModelParameterCompatibility(provider: LLMProvider, model?: string): ModelParameterCompatibility {
-  const normalizedModel = normalizeModel(model);
+  const normalizedModel = normalizeModel(model).split("/").at(-1) ?? "";
 
-  if (provider === "kimi" && isKimiFixedTemperatureModel(normalizedModel)) {
+  // Relays preserve the upstream model's temperature contract regardless of their provider label.
+  if (isKimiFixedTemperatureModel(normalizedModel)) {
     return {
       fixedTemperature: 1,
     };

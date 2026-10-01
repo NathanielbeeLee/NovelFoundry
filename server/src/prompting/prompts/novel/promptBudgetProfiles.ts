@@ -1,4 +1,20 @@
 import type { PromptBudgetProfile } from "@novelfoundry/shared/types/chapterRuntime";
+import { MAX_VOLUME_COUNT } from "@novelfoundry/shared/types/volumePlanning";
+
+const VOLUME_STRATEGY_OUTPUT_BASE_TOKENS = 1_600;
+const VOLUME_STRATEGY_OUTPUT_TOKENS_PER_VOLUME = 200;
+const VOLUME_STRATEGY_OUTPUT_MIN_TOKENS = 2_400;
+const VOLUME_STRATEGY_OUTPUT_MAX_TOKENS = 6_400;
+
+/** Output allowance is separate from the strategy's input/context budget. */
+export function resolveVolumeStrategyOutputBudget(expectedVolumeCount: number): number {
+  const volumeCount = Number.isFinite(expectedVolumeCount)
+    ? Math.min(MAX_VOLUME_COUNT, Math.max(1, Math.ceil(expectedVolumeCount)))
+    : 1;
+  const requiredTokens = VOLUME_STRATEGY_OUTPUT_BASE_TOKENS
+    + volumeCount * VOLUME_STRATEGY_OUTPUT_TOKENS_PER_VOLUME;
+  return Math.min(VOLUME_STRATEGY_OUTPUT_MAX_TOKENS, Math.max(VOLUME_STRATEGY_OUTPUT_MIN_TOKENS, requiredTokens));
+}
 
 export const NOVEL_PROMPT_BUDGETS = {
   directorCandidates: 1200,

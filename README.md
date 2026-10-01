@@ -276,5 +276,11 @@ are retained in [NOTICE](NOTICE).
 - Prompt Workbench lists comic visual-fact extraction so you can inspect the
   instructions that help keep characters, places, props, and states consistent
   across episodes.
+- Long novels receive more room for complete volume strategies, with concise
+  planning fields that reduce the risk of an unfinished result.
+- Kimi K2/K3 models use compatible temperature settings through custom
+  endpoints as well as the Kimi preset.
+- Chapter writing, review, and repair retain book constraints, protected
+  secrets, and edit boundaries when reference context needs shortening.
 
 Full history is available in [docs/releases/release-notes.md](docs/releases/release-notes.md).

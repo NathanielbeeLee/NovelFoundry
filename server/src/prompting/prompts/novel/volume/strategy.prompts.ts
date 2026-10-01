@@ -47,7 +47,7 @@ export function createVolumeStrategyPrompt(
 
   return {
     id: "novel.volume.strategy",
-    version: "v2",
+    version: "v3",
     taskType: "planner",
     mode: "structured",
     language: "zh",
@@ -73,6 +73,8 @@ export function createVolumeStrategyPrompt(
         "当前阶段只做整书层面的分卷策略，不展开单卷骨架，不展开章节，不补写剧情细纲。",
         "你的输出应服务后续分卷骨架生成，因此重点是：卷数、阶段划分、规划深度、前后期控制方式。",
         "只输出严格 JSON，不要输出 Markdown、解释、注释或额外文本。",
+        "优先填齐所有卷的必需字段并闭合 JSON，把输出篇幅用于策略决策，避免在某一卷展开具体情节。",
+        "readerRewardLadder、escalationLadder、midpointShift、notes 每项控制在 120 字以内；roleLabel 使用 20 字以内的短标签，coreReward、escalationFocus 和 uncertainties.reason 各控制在 40 字以内。",
         "",
         "【硬性要求】",
         fixedRecommendedVolumeCount == null
