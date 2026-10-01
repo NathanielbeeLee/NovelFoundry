@@ -3,6 +3,7 @@ import { AntiAiPolicyResolver } from "./AntiAiPolicyResolver";
 import { StyleBindingService } from "./StyleBindingService";
 import { StyleCompiler } from "./StyleCompiler";
 import { StyleProfileService } from "./StyleProfileService";
+import { sanitizeStyleContextForGeneration } from "./styleGenerationSanitizer";
 
 function buildDirectTaskBinding(profile: StyleProfile): StyleBinding {
   const timestamp = new Date().toISOString();
@@ -68,7 +69,7 @@ export class StyleRuntimeResolver {
       });
 
       return {
-        context: {
+        context: sanitizeStyleContextForGeneration({
           matchedBindings,
           compiledBlocks,
           effectiveStyleProfileId: profile.id,
@@ -79,7 +80,7 @@ export class StyleRuntimeResolver {
           usesGlobalAntiAiBaseline: baselineRules.length > 0,
           globalAntiAiRuleIds: baselineRules.map((rule) => rule.id),
           styleAntiAiRuleIds: styleSpecificRules.map((rule) => rule.id),
-        },
+        }),
         antiAiRules,
         primaryProfile: profile,
       };

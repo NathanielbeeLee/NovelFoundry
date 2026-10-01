@@ -11,6 +11,7 @@ import {
 } from "./chapterEmptyContentError";
 import { runChapterRepairText } from "./repair/chapterRepairRuntime";
 import { ChapterPatchRepairFailedError } from "../chapterPatchRepairService";
+import { ChapterRepairInvocationFailedError } from "./repair/ChapterRepairFailurePolicy";
 
 export interface PipelineRuntimeHooks {
   onCheckCancelled?: () => Promise<void>;
@@ -553,7 +554,7 @@ async function repairDraftContent(input: {
       },
     });
   } catch (error) {
-    if (!(error instanceof ChapterPatchRepairFailedError)) {
+    if (!(error instanceof ChapterPatchRepairFailedError) && !(error instanceof ChapterRepairInvocationFailedError)) {
       throw error;
     }
     return {
@@ -562,8 +563,10 @@ async function repairDraftContent(input: {
         chapterId: input.runtimePackage.chapterId,
         message: error.message,
         repairMode: input.options.repairMode ?? "light_repair",
-        failureTypes: error.applyResult?.failures.map((failure) => failure.failureType)
-          ?? [error.plan?.requiresFullRewrite ? "full_rewrite_requested" : "patch_plan_invalid"],
+        failureTypes: error instanceof ChapterRepairInvocationFailedError
+          ? ["repair_invocation_unavailable"]
+          : error.applyResult?.failures.map((failure) => failure.failureType)
+            ?? [error.plan?.requiresFullRewrite ? "full_rewrite_requested" : "patch_plan_invalid"],
         occurredAt: new Date().toISOString(),
       },
     };

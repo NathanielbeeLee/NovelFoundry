@@ -3,6 +3,7 @@ import { runTextPrompt } from "../../prompting/core/promptRunner";
 import { styleRewritePrompt } from "../../prompting/prompts/style/style.prompts";
 import { buildWriterStyleContractText } from "./styleContractText";
 import { StyleRuntimeResolver } from "./StyleRuntimeResolver";
+import { redactStyleSourceReferences, resolveStyleGenerationProfile } from "./styleGenerationSanitizer";
 import { buildAntiAiRuleDirectiveText, listPreviewAntiAiRules } from "./antiAiPreviewRules";
 
 interface RewriteInput {
@@ -35,13 +36,17 @@ export class StyleRewriteService {
     const previewRules = await listPreviewAntiAiRules(input.previewAntiAiRuleIds);
     const existingRuleIds = new Set(resolved.antiAiRules.map((rule) => rule.id));
     const extraPreviewRules = previewRules.filter((rule) => !existingRuleIds.has(rule.id));
+    const generationProfile = resolveStyleGenerationProfile(resolved.context);
 
-    const issuesBlock = input.issues.map((issue, index) => (
+    const issuesBlock = redactStyleSourceReferences(input.issues.map((issue, index) => (
       `${index + 1}. ${issue.ruleName}\n片段：${issue.excerpt}\n修正建议：${issue.suggestion}`
-    )).join("\n\n");
+    )).join("\n\n"), generationProfile);
     const styleContractText = [
-      buildWriterStyleContractText(resolved.context.compiledBlocks?.contract ?? null),
-      buildAntiAiRuleDirectiveText(extraPreviewRules),
+      buildWriterStyleContractText(
+        resolved.context.compiledBlocks?.contract ?? null,
+        generationProfile?.writingGuidance,
+      ),
+      redactStyleSourceReferences(buildAntiAiRuleDirectiveText(extraPreviewRules), generationProfile),
     ].filter(Boolean).join("\n\n");
 
     const result = await runTextPrompt({

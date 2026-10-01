@@ -8,6 +8,7 @@ import type { VolumePlanDocument } from "@novelfoundry/shared/types/novel";
 import { prisma } from "../../../db/prisma";
 import type { StyleBindingService } from "../../styleEngine/StyleBindingService";
 import { buildWriterStyleContractText } from "../../styleEngine/styleContractText";
+import { resolveStyleGenerationProfile } from "../../styleEngine/styleGenerationSanitizer";
 import type { StoryMacroPlanService } from "../storyMacro/StoryMacroPlanService";
 import type { VolumeGenerateOptions } from "./volumeModels";
 import { generateVolumePlanDocument } from "./volumeGenerationOrchestrator";
@@ -238,6 +239,9 @@ export class ChapterExecutionContractService {
       chapterId,
       taskStyleProfileId,
     }).catch(() => null);
-    return buildWriterStyleContractText(resolvedStyleContext?.compiledBlocks?.contract ?? null) || null;
+    return buildWriterStyleContractText(
+      resolvedStyleContext?.compiledBlocks?.contract ?? null,
+      resolveStyleGenerationProfile(resolvedStyleContext)?.writingGuidance,
+    ) || null;
   }
 }

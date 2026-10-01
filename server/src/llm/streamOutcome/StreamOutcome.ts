@@ -18,6 +18,19 @@ export class StreamOutcomeError extends Error {
     this.name = "StreamOutcomeError";
   }
 }
+
+export function isLlmInvocationCancelled(error: unknown): boolean {
+  const seen = new Set<Error>();
+  while (error instanceof Error && !seen.has(error)) {
+    seen.add(error);
+    if (error.name === "AbortError" || (error instanceof StreamOutcomeError && error.kind === "cancelled")) {
+      return true;
+    }
+    error = error.cause;
+  }
+  return false;
+}
+
 function record(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" ? value as Record<string, unknown> : {};
 }

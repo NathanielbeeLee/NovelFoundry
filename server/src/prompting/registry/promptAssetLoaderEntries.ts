@@ -517,7 +517,7 @@ export const promptAssetLoaderEntries: PromptAssetLoaderEntry[] = [
     load: () => require("../prompts/style/style.prompts").styleRecommendationPrompt as UnknownPromptAsset,
   },
   {
-    key: "style.generate@v1",
+    key: "style.generate@v2",
     load: () => require("../prompts/style/style.prompts").styleGenerationPrompt as UnknownPromptAsset,
   },
   {

@@ -3,12 +3,13 @@ import type { StyleDetectionReport } from "@novelfoundry/shared/types/styleEngin
 import { runStructuredPrompt } from "../../prompting/core/promptRunner";
 import { styleDetectionPrompt } from "../../prompting/prompts/style/style.prompts";
 import {
-  buildFullStyleContractText,
+  buildWriterStyleContractText,
   buildStyleContractMetaText,
   inferStyleIssueCategory,
   inferStyleViolationSource,
 } from "./styleContractText";
 import { StyleRuntimeResolver } from "./StyleRuntimeResolver";
+import { redactStyleSourceReferences, resolveStyleGenerationProfile } from "./styleGenerationSanitizer";
 import {
   buildAntiAiRuleCatalogText,
   buildAntiAiRuleDirectiveText,
@@ -44,12 +45,17 @@ export class StyleDetectionService {
     const antiRules = mergeAntiAiRules(resolved.antiAiRules, previewRules);
     const appliedRuleIds = antiRules.map((rule) => rule.id);
     const contract = resolved.context.compiledBlocks?.contract ?? null;
+    const generationProfile = resolveStyleGenerationProfile(resolved.context);
     const styleContractText = [
-      buildFullStyleContractText(contract),
-      buildAntiAiRuleDirectiveText(extraPreviewRules),
+      buildWriterStyleContractText(contract, generationProfile?.writingGuidance),
+      redactStyleSourceReferences(buildAntiAiRuleDirectiveText(extraPreviewRules), generationProfile),
     ].filter(Boolean).join("\n\n");
-    const styleContractMetaText = buildStyleContractMetaText(contract);
-    const antiRuleCatalogText = buildAntiAiRuleCatalogText(antiRules);
+    const styleContractMetaText = buildStyleContractMetaText(contract, { includeSourceLabels: false });
+    const catalogRules = antiRules.map((rule) => {
+      const safeName = redactStyleSourceReferences(rule.name, generationProfile);
+      return { ...rule, name: safeName === rule.name ? safeName : `${safeName} [${rule.id}]` };
+    });
+    const antiRuleCatalogText = redactStyleSourceReferences(buildAntiAiRuleCatalogText(catalogRules), generationProfile);
 
     if (!styleContractText && antiRules.length === 0) {
       return {
@@ -80,7 +86,8 @@ export class StyleDetectionService {
       riskScore: Math.max(0, Math.min(100, Math.round(parsed.riskScore ?? 0))),
       summary: parsed.summary ?? "",
       violations: (parsed.violations ?? []).map((item) => {
-        const matchedRule = antiRules.find((rule) => rule.id === item.ruleId || rule.name === item.ruleName);
+        const matchedRule = antiRules.find((rule) => rule.id === item.ruleId)
+          ?? antiRules.find((rule, index) => rule.name === item.ruleName || catalogRules[index].name === item.ruleName);
         const ruleId = matchedRule?.id ?? item.ruleId ?? item.ruleName;
         const ruleType = matchedRule?.type ?? item.ruleType;
         const source = inferStyleViolationSource(ruleId, contract);

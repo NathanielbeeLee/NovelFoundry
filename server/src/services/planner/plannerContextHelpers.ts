@@ -1,7 +1,7 @@
 import type { StoryMacroPlan } from "@novelfoundry/shared/types/storyMacro";
 import type { ResolvedStyleContext } from "@novelfoundry/shared/types/styleEngine";
 import type { PayoffLedgerResponse } from "@novelfoundry/shared/types/payoffLedger";
-import { buildPlannerStyleContractSummaryText } from "../styleEngine/styleContractText";
+import { resolveStyleGenerationProfile } from "../styleEngine/styleGenerationSanitizer";
 import { buildStoryModePromptBlock, normalizeStoryModeOutput } from "../storyMode/storyModeProfile";
 import { characterDynamicsQueryService } from "../novel/dynamics/CharacterDynamicsQueryService";
 
@@ -232,26 +232,9 @@ export function buildPlannerCharacterDynamicsContext(overview: PlannerCharacterD
 }
 
 export function buildPlannerStyleEngineSummary(styleContext: ResolvedStyleContext | null | undefined): string {
-  const matchedBindings = styleContext?.matchedBindings ?? [];
-  const compiled = styleContext?.compiledBlocks;
-
-  if (matchedBindings.length === 0 && !compiled) {
-    return "无";
-  }
-
-  const bindingLine = matchedBindings.length > 0
-    ? `当前命中写法：${matchedBindings
-      .map((binding) => compactText(binding.styleProfile?.name, binding.styleProfileId))
-      .join(" / ")}`
-    : "";
-
-  const summaryText = buildPlannerStyleContractSummaryText(compiled?.contract);
-  const sections = takeNonEmptyLines(summaryText, 10);
-
-  return [
-    bindingLine,
-    sections.length > 0 ? `规划期写法约束：\n${sections.join("\n")}` : "",
-  ].filter(Boolean).join("\n\n") || "无";
+  const guidance = resolveStyleGenerationProfile(styleContext)?.writingGuidance ?? [];
+  const sections = takeNonEmptyLines(guidance.join("\n"), 10);
+  return sections.length > 0 ? `规划期写法约束：\n${sections.join("\n")}` : "无";
 }
 
 export function buildPlannerPayoffLedgerContext(ledger: PayoffLedgerResponse, chapterOrder: number): string {

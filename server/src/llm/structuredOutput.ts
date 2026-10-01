@@ -457,8 +457,9 @@ export class StructuredOutputError extends Error {
     category: StructuredOutputErrorCategory;
     diagnostics: StructuredOutputDiagnostics;
     retryWithNextStrategy?: boolean;
+    cause?: unknown;
   }) {
-    super(`[STRUCTURED_OUTPUT:${input.category}] ${input.message}`);
+    super(`[STRUCTURED_OUTPUT:${input.category}] ${input.message}`, { cause: input.cause });
     this.name = "StructuredOutputError";
     this.category = input.category;
     this.diagnostics = input.diagnostics;

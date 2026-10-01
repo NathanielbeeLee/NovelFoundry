@@ -1,13 +1,13 @@
 import { z } from "zod";
 import { storyPlanRoleSchema } from "./primitives.js";
 import { dynamicCharacterRiskLevelSchema } from "./dynamicCharacterSchemas.js";
-import { generationNextActionSchema, chapterStateGoalSchema, chapterPayoffDirectiveSchema } from "../canonicalState";
-import { lengthBudgetContractSchema, chapterScenePlanSchema } from "../chapterLengthControl";
-import { readerExperienceContractSchema, EMPTY_READER_EXPERIENCE_CONTRACT } from "../novel/readerExperience";
+import { generationNextActionSchema, chapterStateGoalSchema, chapterPayoffDirectiveSchema } from "../canonicalState.js";
+import { lengthBudgetContractSchema, chapterScenePlanSchema } from "../chapterLengthControl.js";
+import { readerExperienceContractSchema, EMPTY_READER_EXPERIENCE_CONTRACT } from "../novel/readerExperience.js";
 import { runtimeCharacterSchema } from "./sourceSchemas.js";
 import { runtimePayoffLedgerItemSchema, runtimePayoffLedgerSummarySchema } from "./payoffSchemas.js";
-import { timelineContextForChapterSchema } from "../timeline";
-import { characterResourceContextSchema } from "../characterResource";
+import { timelineContextForChapterSchema } from "../timeline.js";
+import { characterResourceContextSchema } from "../characterResource.js";
 import { runtimeStyleContractSchema } from "./styleSchemas.js";
 import { auditSeveritySchema } from "./qualitySchemas.js";
 
@@ -207,6 +207,7 @@ export const chapterWriteContextSchema = z.object({
   previousChapterTail: z.string().nullable().optional(),
   openingAntiRepeatHint: z.string(),
   styleContract: runtimeStyleContractSchema.nullable().optional(),
+  styleGenerationGuidance: z.array(z.string()).optional(),
   styleConstraints: z.array(z.string()).default([]),
   continuationConstraints: z.array(z.string()).default([]),
   ragFacts: z.array(z.string()).default([]),

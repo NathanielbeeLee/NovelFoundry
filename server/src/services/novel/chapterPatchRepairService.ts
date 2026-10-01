@@ -9,6 +9,7 @@ import {
 import { runStructuredPrompt } from "../../prompting/core/promptRunner";
 import { buildChapterRepairContextBlocks } from "../../prompting/prompts/novel/chapterLayeredContext";
 import { chapterPatchRepairPrompt } from "../../prompting/prompts/novel/chapterPatchRepair.prompts";
+import { isRecoverableChapterAiFailure } from "./runtime/repair/ChapterRepairFailurePolicy";
 
 export type PatchRepairMode =
   | "detect_only"
@@ -92,6 +93,9 @@ export class ChapterPatchRepairService {
         },
       });
     } catch (error) {
+      if (!isRecoverableChapterAiFailure(error)) {
+        throw error;
+      }
       const message = error instanceof Error && error.message.trim()
         ? error.message.trim()
         : String(error);

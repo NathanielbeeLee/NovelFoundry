@@ -1,5 +1,6 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
+const { hasFixtureEnvironment, runIsolatedScenario } = require("./fixtures/directorRecovery/isolatedProcess.cjs");
 
 const {
   DirectorNodeRunner,
@@ -352,4 +353,28 @@ test("director node runner records blocked scope gates separately from approval 
   assert.equal(result.status, "blocked_scope");
   assert.equal(store.calls[0].type, "gate");
   assert.equal(store.calls[0].input.status, "blocked_scope");
+});
+
+test("model timeout persists failure and Continue reruns only the unfinished chapter", {
+  skip: !hasFixtureEnvironment(),
+  timeout: 30_000,
+}, async () => {
+  const report = await runIsolatedScenario("nodeTimeout.cjs", "model-timeout");
+  assert.equal(report.providerAborted, true);
+  assert.equal(report.timeoutName, "TimeoutError");
+  assert.equal(report.afterTimeout.task.pendingManualRecovery, true);
+  assert.deepEqual(report.afterTimeout.steps.map(step => step.status), ["succeeded", "failed"]);
+  assert.equal(report.afterTimeout.chapters[1].content, "");
+  assert.equal(report.afterTimeout.artifacts.length, 1);
+  assert.deepEqual(report.generatedChapterIds, report.afterRecovery.chapters.map(chapter => chapter.id));
+  assert.deepEqual(report.afterRecovery.commands.map(command => command.status), ["failed", "succeeded"]);
+  assert.ok(report.afterRecovery.steps.every(step => step.status === "succeeded"));
+  assert.equal(report.retryRunningState.steps[1].status, "running");
+  assert.equal(report.retryRunningState.steps[1].error, null);
+  assert.equal(report.retryRunningState.steps[1].finishedAt, null);
+  assert.equal(report.afterRecovery.steps[1].error, null);
+  assert.ok(report.afterRecovery.events.some(event => event.type === "node_failed" && /timed out/.test(event.summary)));
+  assert.equal(report.afterRecovery.task.pendingManualRecovery, false);
+  assert.equal(report.afterRecovery.steps[0].id, report.afterTimeout.steps[0].id);
+  assert.deepEqual(report.afterRecovery.artifacts[0], report.afterTimeout.artifacts[0]);
 });

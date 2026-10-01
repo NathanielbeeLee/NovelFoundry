@@ -1,5 +1,6 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
+const { hasFixtureEnvironment, runIsolatedScenario } = require("./fixtures/directorRecovery/isolatedProcess.cjs");
 
 const { DirectorCommandService } = require("../dist/services/novel/director/commands/DirectorCommandService.js");
 const { prisma } = require("../dist/db/prisma.js");
@@ -742,4 +743,22 @@ test("director command service requeues task recovery when worker execution fail
   } finally {
     harness.restore();
   }
+});
+
+test("concurrent Continue deduplicates and obsolete lease owners cannot affect recovery", {
+  skip: !hasFixtureEnvironment(),
+  timeout: 30_000,
+}, async () => {
+  const report = await runIsolatedScenario("commandRecovery.cjs", "concurrent-continue");
+  assert.equal(report.accepted.length, 8);
+  assert.equal(new Set(report.accepted.map(response => response.commandId)).size, 1);
+  assert.equal(report.claims.filter(Boolean).length, 1);
+  assert.equal(report.activeAcceptance.commandId, report.commands[0].id);
+  assert.equal(report.commands.length, 1);
+  assert.equal(report.commands[0].status, "succeeded");
+  assert.equal(report.commands[0].leaseOwner, "replacement-worker");
+  assert.equal(report.commands[0].attempt, 2);
+  assert.equal(report.task.pendingManualRecovery, false);
+  assert.equal(report.task.lastError, null);
+  assert.deepEqual(report.rejectedOperations, ["renew", "running", "succeeded", "failed", "cancelled"]);
 });

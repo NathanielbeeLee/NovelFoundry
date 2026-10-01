@@ -6,6 +6,7 @@ import type {
 import { createContextBlock } from "../../../core/contextBudget";
 import type { PromptContextBlock } from "../../../core/promptTypes";
 import { buildWriterStyleContractText } from "../../../../services/styleEngine/styleContractText";
+import { sanitizeStyleContractForGeneration } from "../../../../services/styleEngine/styleGenerationSanitizer";
 import {
   buildCharacterGuidanceText,
   buildLedgerItemLine,
@@ -231,7 +232,10 @@ export function buildChapterWriterContextBlocks(
   const includeCharacterDynamics = shouldIncludeCharacterDynamics(writeContext, mode);
   const includeOpenConflicts = !isIncremental && writeContext.openConflictSummaries.length > 0;
   const includeRecentChapters = mode === "full" && writeContext.recentChapterSummaries.length > 0;
-  const includeStyleContract = mode !== "incremental" && Boolean(writeContext.styleContract);
+  const styleGuidance = writeContext.styleGenerationGuidance
+    ?? sanitizeStyleContractForGeneration(writeContext.styleContract).writingGuidance;
+  const styleContractText = buildWriterStyleContractText(writeContext.styleContract, styleGuidance);
+  const includeStyleContract = mode !== "incremental" && Boolean(styleContractText.trim());
   const includeContinuationConstraints = mode === "full" && writeContext.continuationConstraints.length > 0;
   const wordRange = resolveTargetWordRange(writeContext.chapterMission.targetWordCount);
   const blocks: Array<PromptContextBlock | null> = [
@@ -500,7 +504,7 @@ export function buildChapterWriterContextBlocks(
         group: "style_contract",
         priority: 74,
         required: mode === "full",
-        content: buildWriterStyleContractText(writeContext.styleContract),
+        content: styleContractText,
       })
       : null,
     includeContinuationConstraints

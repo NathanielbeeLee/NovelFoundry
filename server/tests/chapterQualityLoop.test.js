@@ -539,3 +539,70 @@ test("quality loop replan flag is exposed separately from ordinary quality debt"
   assert.equal(hasChapterQualityLoopReplanRequiredRiskFlags(qualityDebt), false);
   assert.equal(hasChapterQualityLoopReplanRequiredRiskFlags(replan), true);
 });
+
+test("saved chapters with deferred local obligations stay completed with visible quality debt", () => {
+  for (const rootCauseCode of ["draft_obligation_unmet", "patchable_obligation_gap", "draft_repair_exhausted"]) {
+    const assessment = {
+      ...buildChapterQualityLoopAssessment({
+        chapterId: "chapter-local-debt", chapterOrder: 4,
+        score: score({ overall: 68, engagement: 65 }), issues: [],
+        evaluatedAt: "2026-10-01T00:00:00.000Z",
+      }),
+      rootCauseCode,
+      blockingObligations: [{ kind: "goal_change", summary: "本章目标变化未兑现" }],
+    };
+    const update = buildChapterQualityLoopChapterUpdate({
+      content: "守门人交出了信件，她拆开封口。", riskFlags: null, repairHistory: null,
+      chapterStatus: "needs_repair", generationState: "reviewed",
+    }, assessment, "repair_recheck", "defer_and_continue");
+    assert.equal(update.chapterStatus, "completed", rootCauseCode);
+    assert.equal(update.generationState, "approved", rootCauseCode);
+    assert.equal(classifyChapterQualityLoopRiskFlags(update.riskFlags), "non_blocking_quality_debt", rootCauseCode);
+    assert.equal(hasChapterQualityLoopReplanRequiredRiskFlags(update.riskFlags), false, rootCauseCode);
+    assert.equal(hasContinuableChapterQualityLoopRiskFlags(update.riskFlags), true, rootCauseCode);
+    const historyLine = update.repairHistory.split("\n").at(-1);
+    const history = JSON.parse(historyLine.slice(CHAPTER_REPAIR_HISTORY_PREFIX.length).trim());
+    assert.equal(history.result, "deferred", rootCauseCode);
+    assert.equal(history.recommendedAction, "patch_repair", rootCauseCode);
+  }
+});
+
+test("each explicit replan signal overrides deferred debt even when usable prose exists", () => {
+  for (const decision of [
+    { recommendedAction: "replan", rootCauseCode: "draft_obligation_unmet" },
+    { recommendedAction: "patch_repair", rootCauseCode: "replan_required" },
+  ]) {
+    const assessment = {
+      ...buildChapterQualityLoopAssessment({
+        chapterId: "chapter-explicit-replan", chapterOrder: 4,
+        score: score({ overall: 68 }), issues: [], evaluatedAt: "2026-10-01T00:00:00.000Z",
+      }),
+      ...decision,
+    };
+    const update = buildChapterQualityLoopChapterUpdate({
+      content: "守门人交出了信件，她拆开封口。", riskFlags: null, repairHistory: null,
+      chapterStatus: "completed", generationState: "approved",
+    }, assessment, "repair_recheck", "defer_and_continue");
+    const risk = JSON.parse(update.riskFlags).qualityLoop;
+    assert.equal(risk.terminalAction, undefined);
+    assert.equal(update.chapterStatus, "needs_repair");
+    assert.equal(update.generationState, "reviewed");
+    assert.equal(classifyChapterQualityLoopRiskFlags(update.riskFlags), "blocking");
+    assert.equal(hasChapterQualityLoopReplanRequiredRiskFlags(update.riskFlags), true);
+    assert.equal(hasContinuableChapterQualityLoopRiskFlags(update.riskFlags), false);
+    assert.equal(readChapterQualityDebtDetails(update.riskFlags), null);
+  }
+});
+
+test("deferred quality assessment never marks empty chapter content complete", () => {
+  const assessment = buildChapterQualityLoopAssessment({
+    chapterId: "chapter-empty-debt", chapterOrder: 4,
+    score: score({ overall: 68 }), issues: [], evaluatedAt: "2026-10-01T00:00:00.000Z",
+  });
+  const update = buildChapterQualityLoopChapterUpdate({
+    content: "  ", riskFlags: null, repairHistory: null,
+    chapterStatus: "planned", generationState: "pending",
+  }, assessment, "pipeline_review", "defer_and_continue");
+  assert.equal(update.chapterStatus, undefined);
+  assert.equal(update.generationState, undefined);
+});

@@ -16,6 +16,7 @@ import {
 import { sanitizeCreativeMustAdvanceItems } from "@novelfoundry/shared/types/chapterCreativeContract";
 import type { ReviewIssue } from "@novelfoundry/shared/types/novel";
 import type { StoryMacroPlan } from "@novelfoundry/shared/types/storyMacro";
+import { resolveStyleGenerationProfile } from "../../../services/styleEngine/styleGenerationSanitizer";
 import {
   hasReaderExperienceContractValue,
   normalizeReaderExperienceContract,
@@ -314,6 +315,8 @@ export function buildChapterWriteContext(input: {
   volumeWindow: VolumeWindowContext | null;
   contextPackage: GenerationContextPackage;
 }): ChapterWriteContext {
+  const styleContext = input.contextPackage.styleContext;
+  const generationStyle = resolveStyleGenerationProfile(styleContext);
   const dynamicCharacterGuidance = buildDynamicCharacterGuidance(input.contextPackage);
   const participants = buildParticipants(input.contextPackage, dynamicCharacterGuidance.characterBehaviorGuides);
   const participantIds = new Set(participants.map((character) => character.id));
@@ -384,6 +387,7 @@ export function buildChapterWriteContext(input: {
     previousChapterTail: compactText(input.contextPackage.previousChapterTail) || null,
     openingAntiRepeatHint: compactText(input.contextPackage.openingHint, "No recent opening guidance."),
     styleContract: input.contextPackage.styleContext?.compiledBlocks?.contract ?? null,
+    styleGenerationGuidance: generationStyle?.writingGuidance,
     styleConstraints: summarizeStyleConstraints(input.contextPackage),
     continuationConstraints: summarizeContinuationConstraints(input.contextPackage),
     ragFacts: [],

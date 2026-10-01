@@ -8,6 +8,13 @@ below; their source evidence is retained in local maintainer archives.
 
 ### 2026-10-01
 
+- Writing profiles guide planning, drafting, review, and rewriting through
+  reusable writing techniques, reducing carry-over of reference names and
+  identities into a new novel.
+- A timed-out or interrupted chapter repair keeps saved prose and records
+  follow-up work so the book can continue. Cancelling stops review and repair.
+- Director recovery shows the current step status after a successful retry
+  and pauses when the chapter plan explicitly needs reconsideration.
 - The workspace loads editing, graph, and Markdown tools when their pages need
   them, reducing the compressed JavaScript required at startup by about 30%.
 - Prompt Workbench lists comic visual-fact extraction so you can inspect the

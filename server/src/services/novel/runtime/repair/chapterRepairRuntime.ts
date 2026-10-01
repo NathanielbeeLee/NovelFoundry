@@ -4,6 +4,7 @@ import type { ReviewIssue } from "@novelfoundry/shared/types/novel";
 import { runTextPrompt } from "../../../../prompting/core/promptRunner";
 import { buildChapterRepairContextBlocks } from "../../../../prompting/prompts/novel/chapterLayeredContext";
 import { chapterRepairPrompt } from "../../../../prompting/prompts/novel/review.prompts";
+import { ChapterRepairInvocationFailedError, isRecoverableChapterAiFailure } from "./ChapterRepairFailurePolicy";
 import {
   ChapterPatchRepairService,
   type PatchRepairMode,
@@ -278,7 +279,13 @@ export async function runChapterRepairText(
     };
   }
 
-  const repaired = await runTextPrompt(createHeavyRepairPromptExecution(prepared));
+  const execution = createHeavyRepairPromptExecution(prepared);
+  const repaired = await runTextPrompt(execution).catch((error: unknown) => {
+    if (!isRecoverableChapterAiFailure(error)) {
+      throw error;
+    }
+    throw new ChapterRepairInvocationFailedError(error);
+  });
   return {
     content: repaired.output.trim() || prepared.prompt.fallbackContent,
     finalRepairMode: prepared.finalRepairMode,

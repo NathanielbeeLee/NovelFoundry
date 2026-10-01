@@ -5,7 +5,7 @@ import type {
   MacroConstraintContext,
 } from "@novelfoundry/shared/types/chapterRuntime";
 import { resolveLengthBudgetContract } from "@novelfoundry/shared/types/chapterLengthControl";
-import { buildPlannerStyleContractSummaryText } from "../../../services/styleEngine/styleContractText";
+import { resolveStyleGenerationProfile } from "../../../services/styleEngine/styleGenerationSanitizer";
 
 export function compactText(value: string | null | undefined, fallback = ""): string {
   return value?.replace(/\s+/g, " ").trim() || fallback;
@@ -232,17 +232,7 @@ export function summarizeHistoricalIssues(contextPackage: GenerationContextPacka
 }
 
 export function summarizeStyleConstraints(contextPackage: GenerationContextPackage): string[] {
-  const contract = contextPackage.styleContext?.compiledBlocks?.contract;
-  if (!contract) {
-    return [];
-  }
-  return takeUnique(
-    buildPlannerStyleContractSummaryText(contract)
-      .split(/\r?\n/g)
-      .map((line) => line.trim())
-      .filter(Boolean),
-    8,
-  );
+  return takeUnique(resolveStyleGenerationProfile(contextPackage.styleContext)?.writingGuidance ?? [], 8);
 }
 
 export function summarizeContinuationConstraints(contextPackage: GenerationContextPackage): string[] {

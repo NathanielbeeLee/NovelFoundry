@@ -182,7 +182,7 @@ test("prompt registry exposes versioned planning assets", () => {
     "storyMode.tree.generate@v1",
     "storyWorldSlice.generate@v1",
     promptKey(styleDetectionPrompt),
-    "style.generate@v1",
+    "style.generate@v2",
     promptKey(styleRewritePrompt),
     promptKey(styleProfileExtractionPrompt),
     promptKey(styleProfileFromBookAnalysisPrompt),

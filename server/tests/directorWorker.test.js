@@ -5,6 +5,7 @@ const { prisma } = require("../dist/db/prisma.js");
 const { DirectorWorker } = require("../dist/workers/directorWorker.js");
 const { DirectorTaskQueue } = require("../dist/workers/DirectorTaskQueue.js");
 const { taskDispatcher } = require("../dist/workers/TaskDispatcher.js");
+const { hasFixtureEnvironment, runWorkerRestartScenario } = require("./fixtures/directorRecovery/isolatedProcess.cjs");
 
 function delay(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -191,4 +192,40 @@ test("task dispatcher notifies waiting slots immediately", async () => {
 test("task dispatcher returns false on timeout", async () => {
   const wasSignaled = await taskDispatcher.waitForSignal(50);
   assert.equal(wasSignaled, false, "should return false on timeout");
+});
+
+test("standalone director worker resumes a killed process from persisted chapter progress", {
+  skip: !hasFixtureEnvironment(),
+  timeout: 50_000,
+}, async () => {
+  const { before, after } = await runWorkerRestartScenario("standalone-restart");
+  assert.notEqual(before.pid, after.pid);
+  assert.deepEqual(before.steps.map(step => step.status), ["succeeded", "running"]);
+  assert.equal(before.chapters[1].content, "");
+  assert.deepEqual(after.executedChapterIds, [after.chapters[1].id]);
+  assert.equal(after.chapters[0].content, before.chapters[0].content);
+  assert.equal(after.steps[0].id, before.steps[0].id);
+  assert.equal(after.steps[0].finishedAt, before.steps[0].finishedAt);
+  assert.equal(after.commands[0].id, before.commands[0].id);
+  assert.equal(after.commands[0].attempt, 2);
+  assert.equal(after.commands[0].status, "succeeded");
+  assert.equal(after.artifacts.length, 2);
+});
+
+test("application restart waits for explicit recovery and preserves saved chapters", {
+  skip: !hasFixtureEnvironment(),
+  timeout: 50_000,
+}, async () => {
+  const { before, after } = await runWorkerRestartScenario("application-restart");
+  assert.notEqual(before.pid, after.pid);
+  assert.equal(after.blockedState.task.pendingManualRecovery, true);
+  assert.equal(after.blockedState.commands[0].status, "stale");
+  assert.equal(after.blockedState.steps[1].status, "failed");
+  assert.equal(after.blockedState.chapters[0].content, before.chapters[0].content);
+  assert.equal(after.blockedState.chapters[1].content, "");
+  assert.equal(after.task.pendingManualRecovery, false);
+  assert.equal(after.commands[1].id, after.recoveryAcceptance.commandId);
+  assert.equal(after.commands[1].status, "succeeded");
+  assert.deepEqual(after.executedChapterIds, [after.chapters[1].id]);
+  assert.deepEqual(after.artifacts[0], before.artifacts[0]);
 });
