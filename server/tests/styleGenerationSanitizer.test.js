@@ -5,9 +5,6 @@ const {
   detectForbiddenStyleEntities,
   sanitizeStyleContextForGeneration,
 } = require("../dist/services/styleEngine/styleGenerationSanitizer.js");
-const {
-  buildStyleEngineBlock,
-} = require("../dist/services/novel/runtime/runtimeContextBlocks.js");
 
 function section(key, text) {
   return {
@@ -107,7 +104,7 @@ function styleContext() {
   };
 }
 
-test("sanitizeStyleContextForGeneration redacts source entities before writer context", () => {
+test("sanitizeStyleContextForGeneration redacts source entities from generated writing guidance", () => {
   const sanitized = sanitizeStyleContextForGeneration(
     styleContext(),
     new Date("2026-05-01T00:00:00.000Z"),
@@ -120,7 +117,7 @@ test("sanitizeStyleContextForGeneration redacts source entities before writer co
     ["北凉王世子"],
   );
 
-  const block = buildStyleEngineBlock(sanitized);
+  const block = sanitized.sanitizedGenerationProfile.writingGuidance.join("\n");
   assert.match(block, /\[source-entity\]/);
   assert.doesNotMatch(block, /北凉王世子/);
   assert.doesNotMatch(block, /徐凤年/);

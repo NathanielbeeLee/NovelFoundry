@@ -1,6 +1,7 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const http = require("node:http");
+const { AIMessageChunk } = require("@langchain/core/messages");
 const { createApp } = require("../dist/app.js");
 const { StyleCompiler } = require("../dist/services/styleEngine/StyleCompiler.js");
 const { buildStyleExtractionSourceInput } = require("../dist/services/styleEngine/StyleExtractionSourceInput.js");
@@ -600,9 +601,10 @@ test("StyleRewriteService includes preview anti-ai rules in the repair prompt", 
     rewriteSuggestion: "改成具体动作和对白。",
   })];
   promptRunner.setPromptRunnerLLMFactoryForTests(async () => ({
-    invoke: async (messages) => {
+    async *stream(messages) {
       capturedPrompt = messages.map((message) => String(message.content)).join("\n");
-      return { content: "他扶住桌沿，半晌才开口。" };
+      yield new AIMessageChunk("他扶住桌沿，");
+      yield new AIMessageChunk("半晌才开口。");
     },
   }));
 
@@ -639,9 +641,11 @@ test("style detection prompt requires broad anti-ai recall and non-copyable sugg
   const promptText = rendered.messages.map((message) => String(message.content)).join("\n");
 
   assert.match(promptText, /必须通读全文做召回/);
-  assert.match(promptText, /高频模板表达/);
-  assert.match(promptText, /仿佛、似乎、极其、完美、深不见底/);
-  assert.match(promptText, /通常不应低于 60/);
+  assert.match(promptText, /反复用相似的抽象心理、套语或现成描写代替具体事件与人物反应/);
+  assert.match(promptText, /只有这种重复实际削弱场景时才记录问题/);
+  assert.match(promptText, /不能仅凭命中词语.*判违规/);
+  assert.match(promptText, /riskScore 必须反映整体风险，而不是单点放大/);
+  assert.match(promptText, /多处相同表达只有在共同削弱场景、人物区分或阅读节奏时才提高整体分数/);
   assert.match(promptText, /禁止输出完整可复制替换句/);
 });
 
