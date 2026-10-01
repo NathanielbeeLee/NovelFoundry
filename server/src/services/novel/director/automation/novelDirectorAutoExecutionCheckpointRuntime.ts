@@ -18,7 +18,7 @@ import {
   type DirectorAutoExecutionRange,
 } from "./novelDirectorAutoExecution";
 import { buildDirectorSessionState } from "../runtime/novelDirectorHelpers";
-import { PIPELINE_REPLAN_NOTICE_CODE, parsePipelinePayload } from "../../pipelineJobState";
+import { parsePipelinePayload } from "../../pipelineJobState";
 import { buildDirectorQualityRepairRisk } from "../phases/novelDirectorQualityRepairRisk";
 
 export type AutoExecutionResumeStage = "chapter" | "pipeline";
@@ -236,9 +236,6 @@ export async function resolveQualityRepairNoticeAction(
   checkpointState: DirectorAutoExecutionState;
   qualityRepairRisk: DirectorQualityRepairRisk;
 }> {
-  const checkpointType = input.noticeCode === PIPELINE_REPLAN_NOTICE_CODE
-    ? "replan_required"
-    : "chapter_batch_ready";
   const qualityRepairRisk = buildDirectorQualityRepairRisk({
     noticeCode: input.noticeCode,
     noticeSummary: input.noticeSummary,
@@ -246,6 +243,9 @@ export async function resolveQualityRepairNoticeAction(
     remainingChapterCount: input.autoExecution.remainingChapterCount ?? 0,
     totalChapterCount: input.range.totalChapterCount,
   });
+  const checkpointType = qualityRepairRisk.riskLevel === "replan"
+    ? "replan_required"
+    : "chapter_batch_ready";
   const checkpointState = {
     ...input.autoExecution,
     pipelineJobId: input.pipelineJobId,
@@ -262,7 +262,8 @@ export async function resolveQualityRepairNoticeAction(
     && hasQualityAlertDetails;
   const canSkipCurrentQualityRepair = Boolean(
     input.skipCurrentQualityRepair
-    && isAiDriverExecution,
+    && isAiDriverExecution
+    && checkpointType === "chapter_batch_ready",
   );
   const canContinueAfterExplicitApproval = Boolean(
     input.approveAutoExecutionScope

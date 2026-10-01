@@ -377,6 +377,8 @@ export class DirectorRuntimeStore {
           targetType: input.targetType ?? null,
           targetId: input.targetId ?? null,
           startedAt: existingStep?.startedAt ?? now,
+          finishedAt: null,
+          error: null,
         }),
         events: [
           ...snapshot.events,
@@ -427,6 +429,7 @@ export class DirectorRuntimeStore {
           nodeKey: input.nodeKey,
           label: input.label,
           status: "succeeded",
+          error: null,
           targetType: input.targetType ?? null,
           targetId: input.targetId ?? null,
           startedAt: snapshot.steps.find((step) => step.idempotencyKey === idempotencyKey)?.startedAt ?? now,

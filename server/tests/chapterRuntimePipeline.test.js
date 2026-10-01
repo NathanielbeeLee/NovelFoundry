@@ -8,6 +8,21 @@ const {
 const {
   ChapterEmptyContentError,
 } = require("../dist/services/novel/runtime/chapterEmptyContentError.js");
+const {
+  StructuredOutputError,
+} = require("../dist/llm/structuredOutput.js");
+const {
+  wrapStructuredInvokeError,
+} = require("../dist/llm/structuredInvokeParser.js");
+const {
+  ChapterAcceptanceAssessmentService,
+} = require("../dist/services/novel/runtime/ChapterAcceptanceAssessmentService.js");
+const {
+  openConflictService,
+} = require("../dist/services/state/OpenConflictService.js");
+const {
+  StreamOutcomeError,
+} = require("../dist/llm/streamOutcome/index.js");
 
 function createTextStreamLLM(content) {
   return {
@@ -1410,5 +1425,279 @@ test("runPipelineChapterWithRuntime clamps maxRetries to a single repair pass", 
     assert.equal(finalSyncs.length, 1);
   } finally {
     promptRunner.runStructuredPrompt = originalRunStructuredPrompt;
+  }
+});
+
+function createStructuredOutputFailure(category) {
+  return new StructuredOutputError({
+    message: `Isolated chapter invocation failure: ${category}`,
+    category,
+    diagnostics: {
+      strategy: "prompt_json",
+      profile: {
+        nativeJsonSchema: false,
+        nativeJsonObject: false,
+        requiresNonThinkingForStructured: false,
+        supportsReasoningToggle: false,
+        omitMaxTokensForNativeStructured: false,
+        preferredStructuredStrategy: "prompt_json",
+        family: "fixture",
+      },
+      reasoningForcedOff: false,
+      fallbackAvailable: false,
+      fallbackUsed: false,
+      errorCategory: category,
+    },
+  });
+}
+
+function createWrappedCancellation() {
+  const cancellation = Object.assign(new Error("Operation cancelled"), { name: "AbortError" });
+  const wrapper = new Error("Provider invocation interrupted", { cause: cancellation });
+  return wrapStructuredInvokeError({
+    label: "chapter-repair-fixture",
+    error: wrapper,
+    strategy: "prompt_json",
+    profile: createStructuredOutputFailure("transport_error").diagnostics.profile,
+  });
+}
+
+function createRepairFailureFixture() {
+  const trace = { drafts: [], syncs: [], states: [], retries: [], reviews: 0, needsRepair: 0 };
+  const content = "守门人把湿透的信放到桌上，等她拆开封口后才离开。";
+  const deps = {
+    validateRequest: (input) => input,
+    async ensureNovelCharacters() {},
+    async assemble() {
+      return {
+        novel: { id: "novel-1", title: "Fixture novel" },
+        chapter: { id: "chapter-1", title: "Arrival", order: 1, content: null, expectation: null },
+        contextPackage: {},
+      };
+    },
+    async generateDraftFromWriter() { return { content }; },
+    async saveDraftAndArtifacts(_novelId, _chapterId, draft, state) {
+      trace.drafts.push({ content: draft, state });
+    },
+    async finalizeChapterContent({ content: draft }) {
+      trace.reviews += 1;
+      return { finalContent: draft, runtimePackage: createRuntimePackage(70) };
+    },
+    async syncFinalChapterArtifacts(_novelId, _chapterId, draft, options) {
+      trace.syncs.push({ content: draft, ...options });
+    },
+    async markChapterGenerationState(_chapterId, state) { trace.states.push(state); },
+    async markChapterNeedsRepair() { trace.needsRepair += 1; },
+  };
+  return {
+    content, deps, trace,
+    hooks: { async onRetryConsumed(kind) { trace.retries.push(kind); } },
+  };
+}
+
+test("local patch output and transport failures retain prose, finalize debt, and consume only one repair", async (t) => {
+  const original = promptRunner.runStructuredPrompt;
+  try {
+    for (const category of [
+      "schema_mismatch", "malformed_json", "incomplete_json", "thinking_pollution",
+      "transport_error", "usage_budget_exceeded",
+    ]) {
+      await t.test(category, async () => {
+        promptRunner.runStructuredPrompt = async () => { throw createStructuredOutputFailure(category); };
+        const fixture = createRepairFailureFixture();
+        const result = await runPipelineChapterWithRuntime(
+          fixture.deps, "novel-1", "chapter-1", { repairMode: "light_repair" }, fixture.hooks,
+        );
+        assert.equal(result.pass, false);
+        assert.deepEqual(result.recoverableRepairFailure.failureTypes, ["patch_plan_invalid"]);
+        assert.equal(result.qualityDebtAttribution.repairAttemptsUsed, 1);
+        assert.equal(result.retryCountUsed, 1);
+        assert.deepEqual(fixture.trace.retries, ["quality_repair"]);
+        assert.deepEqual(fixture.trace.drafts, [{ content: fixture.content, state: "drafted" }]);
+        assert.deepEqual(fixture.trace.syncs, [{
+          content: fixture.content, artifactSyncMode: "adaptive", contentProvenance: "debt",
+        }]);
+        assert.deepEqual(fixture.trace.states, ["reviewed"]);
+        assert.equal(fixture.trace.needsRepair, 1);
+        assert.equal(fixture.trace.reviews, 1);
+      });
+    }
+  } finally {
+    promptRunner.runStructuredPrompt = original;
+  }
+});
+
+test("user cancellation remains a batch interruption with saved prose in every repair mode", async (t) => {
+  const originalStructured = promptRunner.runStructuredPrompt;
+  const originalText = promptRunner.runTextPrompt;
+  try {
+    for (const mode of ["light_repair", "heavy_repair"]) {
+      for (const failure of [
+        Object.assign(new Error("Operation cancelled"), { name: "AbortError" }),
+        new StreamOutcomeError("cancelled"),
+        new Error("PIPELINE_CANCELLED"),
+        createWrappedCancellation(),
+      ]) {
+        await t.test(`${mode}: ${failure.category ?? failure.name}`, async () => {
+          promptRunner.runStructuredPrompt = async () => { throw failure; };
+          promptRunner.runTextPrompt = async () => { throw failure; };
+          const fixture = createRepairFailureFixture();
+          await assert.rejects(
+            runPipelineChapterWithRuntime(
+              fixture.deps, "novel-1", "chapter-1", { repairMode: mode }, fixture.hooks,
+            ),
+            (error) => error === failure,
+          );
+          assert.deepEqual(fixture.trace.drafts, [{ content: fixture.content, state: "drafted" }]);
+          assert.deepEqual(fixture.trace.syncs, []);
+          assert.deepEqual(fixture.trace.states, ["reviewed"]);
+          assert.deepEqual(fixture.trace.retries, []);
+          assert.equal(fixture.trace.needsRepair, 0);
+        });
+      }
+    }
+  } finally {
+    promptRunner.runStructuredPrompt = originalStructured;
+    promptRunner.runTextPrompt = originalText;
+  }
+});
+
+test("unknown or data-integrity errors during repair preserve interruption rather than becoming quality debt", async (t) => {
+  const originalStructured = promptRunner.runStructuredPrompt;
+  const originalText = promptRunner.runTextPrompt;
+  try {
+    for (const mode of ["light_repair", "heavy_repair"]) {
+      for (const failure of [
+        new TypeError("Fixture runtime contract is invalid"),
+        Object.assign(new Error("Fixture foreign-key integrity failure"), { code: "P2003" }),
+      ]) {
+        await t.test(`${mode}: ${failure.code ?? failure.name}`, async () => {
+          promptRunner.runStructuredPrompt = async () => { throw failure; };
+          promptRunner.runTextPrompt = async () => { throw failure; };
+          const fixture = createRepairFailureFixture();
+          await assert.rejects(
+            runPipelineChapterWithRuntime(
+              fixture.deps, "novel-1", "chapter-1", { repairMode: mode }, fixture.hooks,
+            ),
+            (error) => error === failure,
+          );
+          assert.deepEqual(fixture.trace.drafts, [{ content: fixture.content, state: "drafted" }]);
+          assert.deepEqual(fixture.trace.syncs, []);
+          assert.deepEqual(fixture.trace.retries, []);
+          assert.equal(fixture.trace.needsRepair, 0);
+        });
+      }
+    }
+  } finally {
+    promptRunner.runStructuredPrompt = originalStructured;
+    promptRunner.runTextPrompt = originalText;
+  }
+});
+
+test("heavy repair timeout or stream interruption preserves the original draft as local debt", async (t) => {
+  const original = promptRunner.runTextPrompt;
+  try {
+    for (const failure of [
+      Object.assign(new Error("Fixture repair request timed out"), { name: "TimeoutError" }),
+      new StreamOutcomeError("interrupted", "Unconfirmed partial rewrite"),
+    ]) {
+      await t.test(failure.name, async () => {
+        promptRunner.runTextPrompt = async () => { throw failure; };
+        const fixture = createRepairFailureFixture();
+        const result = await runPipelineChapterWithRuntime(
+          fixture.deps, "novel-1", "chapter-1", { repairMode: "heavy_repair" }, fixture.hooks,
+        );
+        assert.equal(result.pass, false);
+        assert.equal(result.recoverableRepairFailure.repairMode, "heavy_repair");
+        assert.equal(result.retryCountUsed, 1);
+        assert.equal(result.qualityDebtAttribution.repairAttemptsUsed, 1);
+        assert.deepEqual(fixture.trace.drafts, [{ content: fixture.content, state: "drafted" }]);
+        assert.deepEqual(fixture.trace.syncs, [{
+          content: fixture.content, artifactSyncMode: "adaptive", contentProvenance: "debt",
+        }]);
+        assert.equal(fixture.trace.reviews, 1);
+        assert.equal(fixture.trace.needsRepair, 1);
+      });
+    }
+  } finally {
+    promptRunner.runTextPrompt = original;
+  }
+});
+
+test("empty heavy repair output preserves usable prose and records exhausted local debt", async () => {
+  const original = promptRunner.runTextPrompt;
+  let repairCalls = 0;
+  promptRunner.runTextPrompt = async () => { repairCalls += 1; return { output: "  " }; };
+  try {
+    const fixture = createRepairFailureFixture();
+    const result = await runPipelineChapterWithRuntime(
+      fixture.deps, "novel-1", "chapter-1", { repairMode: "heavy_repair" }, fixture.hooks,
+    );
+    assert.equal(repairCalls, 1);
+    assert.equal(result.pass, false);
+    assert.equal(result.recoverableRepairFailure, null);
+    assert.equal(result.qualityDebtAttribution.sameObligationRepeated, true);
+    assert.equal(result.qualityDebtAttribution.repairAttemptsUsed, 1);
+    assert.equal(fixture.trace.reviews, 2);
+    assert.deepEqual(fixture.trace.syncs, [{
+      content: fixture.content, artifactSyncMode: "adaptive", contentProvenance: "debt",
+    }]);
+    assert.equal(fixture.trace.drafts.every((draft) => draft.content === fixture.content), true);
+    assert.equal(fixture.trace.states.includes("approved"), false);
+  } finally {
+    promptRunner.runTextPrompt = original;
+  }
+});
+
+test("final artifact persistence failures propagate after preserving the draft", async () => {
+  const fixture = createRepairFailureFixture();
+  const failure = new Error("Fixture artifact integrity failure");
+  fixture.deps.syncFinalChapterArtifacts = async () => { throw failure; };
+  await assert.rejects(
+    runPipelineChapterWithRuntime(fixture.deps, "novel-1", "chapter-1", { autoRepair: false }),
+    (error) => error === failure,
+  );
+  assert.deepEqual(fixture.trace.drafts, [{ content: fixture.content, state: "drafted" }]);
+  assert.equal(fixture.trace.states.includes("approved"), false);
+});
+
+test("acceptance output and transport failure remain local warnings, but cancellation or data errors do not write fallback reports", async (t) => {
+  const originalSync = openConflictService.syncFromAuditReports;
+  openConflictService.syncFromAuditReports = async () => null;
+  try {
+    const cases = [
+      ...["schema_mismatch", "transport_error", "usage_budget_exceeded"].map((category) => ({
+        label: category, failure: createStructuredOutputFailure(category), local: true,
+      })),
+      { label: "aborted", failure: Object.assign(new Error("Operation cancelled"), { name: "AbortError" }) },
+      { label: "wrapped cancellation", failure: createWrappedCancellation() },
+      { label: "unknown runtime failure", failure: new TypeError("Fixture runtime contract is invalid") },
+      { label: "data integrity failure", failure: Object.assign(new Error("Fixture foreign-key integrity failure"), { code: "P2003" }) },
+    ];
+    for (const { label, failure, local } of cases) {
+      await t.test(label, async () => {
+        const fixture = createRepairFailureFixture();
+        const service = new ChapterAcceptanceAssessmentService();
+        let reportsWritten = 0;
+        service.invokeAssessment = async () => { throw failure; };
+        service.persistAcceptanceReports = async () => { reportsWritten += 1; return []; };
+        const assess = () => service.assess({
+          novelId: "novel-1", chapterId: "chapter-1", novelTitle: "Fixture novel",
+          chapterTitle: "Arrival", chapterOrder: 1, content: fixture.content, contextPackage: {},
+        });
+        if (local) {
+          const result = await assess();
+          assert.equal(result.assessment.status, "continue_with_risk");
+          assert.equal(result.assessment.continuePolicy, "continue");
+          assert.deepEqual(result.assessment.riskTags, ["acceptance_gate_unavailable"]);
+          assert.equal(reportsWritten, 1);
+        } else {
+          await assert.rejects(assess, (error) => error === failure);
+          assert.equal(reportsWritten, 0);
+        }
+      });
+    }
+  } finally {
+    openConflictService.syncFromAuditReports = originalSync;
   }
 });

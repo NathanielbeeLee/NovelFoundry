@@ -177,7 +177,12 @@ test("ChapterPatchRepairService does not run local repair in rewrite-only modes"
 test("ChapterPatchRepairService reports structured patch schema failures as recoverable", async () => {
   const originalRunStructuredPrompt = promptRunner.runStructuredPrompt;
   promptRunner.runStructuredPrompt = async () => {
-    throw new Error("patches.1.targetExcerpt: Too small");
+    const { StructuredOutputError } = require("../dist/llm/structuredOutput.js");
+    throw new StructuredOutputError({
+      message: "patches.1.targetExcerpt: Too small",
+      category: "schema_mismatch",
+      diagnostics: {},
+    });
   };
 
   try {

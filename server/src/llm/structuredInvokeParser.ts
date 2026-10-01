@@ -4,6 +4,7 @@ import type { ModelRouteRequestProtocol } from "@novelfoundry/shared/types/novel
 import type { TaskType } from "./modelRouter";
 import { relaxGeneratedContentSchema } from "./generatedContentSchema";
 import { repairWithLlm } from "./structuredInvokeRepair";
+import { isLlmInvocationCancelled } from "./streamOutcome";
 import {
   classifyStructuredOutputFailure,
   resolveStructuredOutputProfile,
@@ -288,11 +289,13 @@ export function buildStructuredError(input: {
   reasoningForcedOff?: boolean;
   fallbackAvailable?: boolean;
   fallbackUsed?: boolean;
+  cause?: unknown;
 }): StructuredOutputError {
   return new StructuredOutputError({
     message: input.message,
     category: input.category,
     retryWithNextStrategy: input.retryWithNextStrategy,
+    cause: input.cause,
     diagnostics: buildDiagnostics({
       strategy: input.strategy,
       profile: input.profile,
@@ -329,6 +332,7 @@ export function wrapStructuredInvokeError(input: {
   return buildStructuredError({
     message,
     category,
+    cause: input.error,
     strategy: input.strategy,
     profile: input.profile,
     reasoningForcedOff: input.reasoningForcedOff,
@@ -432,6 +436,9 @@ export async function parseStructuredLlmRawContentDetailed<T>(
           tokenUsage: input.tokenUsage ?? null,
         };
       } catch (repairError) {
+        if (isLlmInvocationCancelled(repairError)) {
+          throw repairError;
+        }
         if (attempt >= maxRepairAttempts) {
           throw buildStructuredError({
             message: `[${input.label}] JSON 解析失败且修复未成功。错误：${repairError instanceof Error ? repairError.message : String(repairError)}`,
@@ -439,6 +446,7 @@ export async function parseStructuredLlmRawContentDetailed<T>(
               error: repairError,
               rawContent: input.rawContent,
             }),
+            cause: repairError,
             strategy: input.strategy,
             profile: input.profile,
             reasoningForcedOff: input.reasoningForcedOff,
@@ -517,10 +525,14 @@ export async function parseStructuredLlmRawContentDetailed<T>(
         tokenUsage: input.tokenUsage ?? null,
       };
     } catch (error) {
+      if (isLlmInvocationCancelled(error)) {
+        throw error;
+      }
       if (attempt >= maxRepairAttempts) {
         throw buildStructuredError({
           message: `[${input.label}] LLM 输出经修复后仍未通过 Schema 校验。错误：${error instanceof Error ? error.message : String(error)}`,
           category: "schema_mismatch",
+          cause: error,
           strategy: input.strategy,
           profile: input.profile,
           reasoningForcedOff: input.reasoningForcedOff,

@@ -6,7 +6,7 @@ import { type StyleGenerationPromptInput, type StyleRewritePromptInput } from ".
 
 export const styleGenerationPrompt: PromptAsset<StyleGenerationPromptInput, string, string> = {
   id: "style.generate",
-  version: "v1",
+  version: "v2",
   taskType: "writer",
   mode: "text",
   language: "zh",
@@ -21,14 +21,13 @@ export const styleGenerationPrompt: PromptAsset<StyleGenerationPromptInput, stri
       "你必须同时遵守以下规则块中的要求，且优先级为：",
       "角色表达规则与硬性设定约束 > 写法规则 > 反AI规则 > 默认语言习惯。",
       "",
-      "【写法规则】",
-      input.styleBlock || "无",
-      "",
-      "【角色表达规则】",
-      input.characterBlock || "无",
-      "",
-      "【反AI规则】",
-      input.antiAiBlock || "无",
+      input.styleContractText !== undefined
+        ? ["【写法合同（含角色、语言、节奏、反AI与自检约束）】", input.styleContractText || "无"].join("\n")
+        : [
+            "【写法规则】", input.styleBlock || "无",
+            "【角色表达规则】", input.characterBlock || "无",
+            "【反AI规则】", input.antiAiBlock || "无",
+          ].join("\n\n"),
       "",
       "全局硬规则：",
       "1. 只输出最终正文，不要输出解释、注释、修改说明、标题补充、代码块或额外文本。",
@@ -66,7 +65,7 @@ export const styleGenerationPrompt: PromptAsset<StyleGenerationPromptInput, stri
       "2. 是否符合角色表达规则，没有把角色写串。",
       "3. 是否消除了明显AI味，如空泛总结、模板句、假热闹、机械抒情。",
       "4. 是否只输出正文，没有任何额外说明。",
-      input.selfCheckBlock ? `5. 额外自检要求：\n${input.selfCheckBlock}` : "",
+      input.styleContractText === undefined && input.selfCheckBlock ? `5. 额外自检要求：\n${input.selfCheckBlock}` : "",
     ].filter(Boolean).join("\n\n")),
     new HumanMessage(input.prompt),
   ],

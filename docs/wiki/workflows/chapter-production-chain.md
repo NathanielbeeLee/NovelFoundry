@@ -26,6 +26,27 @@ feedback.
 - The chain may pause for explicit replan, unusable output, or data/runtime
   safety failure. Local quality debt does not automatically stop the book.
 
+## Repair failure boundary
+
+Once usable prose is saved, a review or repair invocation may fail to produce
+an accepted result. Structured-output failures, repair-call timeouts, and
+non-cancelled stream interruptions remain local repair work. Both patch repair
+and whole-chapter repair preserve the original draft, consume the local repair
+attempt, and finalize visible quality debt rather than treating that chapter as
+accepted or demanding a global replan. Unconfirmed partial rewrites do not
+replace the saved draft.
+
+`ChapterRepairFailurePolicy` classifies only known AI invocation failures.
+Cancellation, unknown exceptions, context-assembly failures, and persistence
+or integrity failures propagate through the normal runtime recovery path.
+Keep the recoverable catch around the model invocation; do not extend it over
+database writes or final artifact synchronization. An unavailable acceptance
+assessment is a warning, while a cancelled assessment writes no fallback report.
+
+Regression checks use injected AI failures and disposable SQLite schemas.
+They verify retention, retry consumption, debt finalization, and interruption
+boundaries without using a writer's database or a live model provider.
+
 ## Extension rule
 
 New routes, streams, jobs, or director commands may provide a different

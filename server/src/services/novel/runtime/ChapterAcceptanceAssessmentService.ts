@@ -16,6 +16,7 @@ import {
 import { openConflictService } from "../../state/OpenConflictService";
 import { normalizeScore, ruleScore } from "../novelP0Utils";
 import { detectProseQuality } from "./proseQuality/ProseQualityDetector";
+import { isRecoverableChapterAiFailure } from "./repair/ChapterRepairFailurePolicy";
 
 export interface ChapterAcceptanceAssessmentInput {
   novelId: string;
@@ -239,7 +240,12 @@ function buildFallbackAssessment(content: string): ChapterAcceptanceAssessmentOu
 
 export class ChapterAcceptanceAssessmentService {
   async assess(input: ChapterAcceptanceAssessmentInput): Promise<ChapterAcceptanceAssessmentResult> {
-    const assessment = await this.invokeAssessment(input).catch(() => buildFallbackAssessment(input.content));
+    const assessment = await this.invokeAssessment(input).catch((error: unknown) => {
+      if (!isRecoverableChapterAiFailure(error)) {
+        throw error;
+      }
+      return buildFallbackAssessment(input.content);
+    });
     const proseQuality = detectProseQuality(input.content);
     const proseIssues = proseQuality.findings.slice(0, 5).map((finding) => ({
       severity: finding.severity,

@@ -78,7 +78,10 @@ export function buildFullStyleContractText(
     .join("\n\n");
 }
 
-export function buildStyleContractMetaText(contract: StyleContract | null | undefined): string {
+export function buildStyleContractMetaText(
+  contract: StyleContract | null | undefined,
+  options: { includeSourceLabels?: boolean } = {},
+): string {
   if (!contract) {
     return "";
   }
@@ -89,7 +92,7 @@ export function buildStyleContractMetaText(contract: StyleContract | null | unde
     `effective_style_profile_id=${compactValue(contract.meta.effectiveStyleProfileId)}`,
     `task_style_profile_id=${compactValue(contract.meta.taskStyleProfileId)}`,
     `source_targets=${compactList(contract.meta.activeSourceTargets)}`,
-    `source_labels=${compactList(contract.meta.activeSourceLabels)}`,
+    options.includeSourceLabels === false ? "" : `source_labels=${compactList(contract.meta.activeSourceLabels)}`,
     `maturity=${contract.meta.maturity}`,
     `active_sections=${compactList(activeSections)}`,
     `writer_sections=${compactList(contract.meta.writerIncludedSections)}`,
@@ -98,10 +101,17 @@ export function buildStyleContractMetaText(contract: StyleContract | null | unde
     `uses_global_anti_ai_baseline=${contract.meta.usesGlobalAntiAiBaseline ? "yes" : "no"}`,
     `global_anti_ai_rule_ids=${compactList(contract.meta.globalAntiAiRuleIds)}`,
     `style_anti_ai_rule_ids=${compactList(contract.meta.styleAntiAiRuleIds)}`,
-  ].join("\n");
+  ].filter(Boolean).join("\n");
 }
 
-export function buildWriterStyleContractText(contract: StyleContract | null | undefined): string {
+export function buildWriterStyleContractText(
+  contract: StyleContract | null | undefined,
+  generationGuidance?: string[],
+): string {
+  // An explicit sanitized result must never fall back to the source contract.
+  if (generationGuidance !== undefined) {
+    return generationGuidance.join("\n");
+  }
   if (!contract) {
     return "";
   }

@@ -13,6 +13,7 @@ export interface StyleRecommendationPromptInput {
 }
 
 export interface StyleGenerationPromptInput {
+  styleContractText?: string;
   styleBlock: string;
   characterBlock: string;
   antiAiBlock: string;

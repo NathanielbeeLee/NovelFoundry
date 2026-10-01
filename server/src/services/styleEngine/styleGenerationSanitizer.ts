@@ -1,9 +1,10 @@
 import type {
   ResolvedStyleContext,
+  StyleContract,
   StyleProfile,
   StyleSanitizedGenerationProfile,
 } from "@novelfoundry/shared/types/styleEngine";
-import { buildWriterStyleContractText } from "./styleContractText";
+import { buildFullStyleContractText } from "./styleContractText";
 
 type StyleProfileLike = Partial<StyleProfile> & {
   name?: string | null;
@@ -12,6 +13,11 @@ type StyleProfileLike = Partial<StyleProfile> & {
 
 type StyleContextWithSanitizedProfile = {
   sanitizedGenerationProfile?: StyleSanitizedGenerationProfile | null;
+};
+
+type StyleGenerationContext = StyleContextWithSanitizedProfile & {
+  compiledBlocks?: { contract: StyleContract } | null;
+  matchedBindings?: Array<{ styleProfile?: StyleProfileLike | null }>;
 };
 
 const ENTITY_SUFFIXES = [
@@ -181,34 +187,70 @@ function splitGuidanceLines(text: string): string[] {
     .slice(0, MAX_GUIDANCE_LINES);
 }
 
-export function sanitizeStyleContextForGeneration(
-  context: ResolvedStyleContext,
+export function sanitizeStyleContractForGeneration(
+  contract: StyleContract | null | undefined,
+  sourceProfiles: StyleProfileLike[] = [],
   now: Date = new Date(),
-): ResolvedStyleContext {
+): StyleSanitizedGenerationProfile {
   const sourceProfileNames = Array.from(new Set(
-    context.matchedBindings
-      .map((binding) => binding.styleProfile?.name?.trim())
+    sourceProfiles
+      .map((profile) => profile.name?.trim())
       .filter((name): name is string => Boolean(name)),
   ));
-  const contractText = buildWriterStyleContractText(context.compiledBlocks?.contract ?? null);
+  const contractText = buildFullStyleContractText(contract);
   const sourceText = [
     contractText,
-    ...context.matchedBindings.map((binding) => collectProfileText(binding.styleProfile)),
+    ...sourceProfiles.map(collectProfileText),
   ].filter(Boolean).join("\n");
   const forbiddenEntities = extractEntityCandidates(sourceText);
-  const sanitizedContractText = redactForbiddenEntities(contractText, forbiddenEntities);
+  const sanitizedContractText = redactForbiddenEntities(contractText, [...forbiddenEntities, ...sourceProfileNames]);
   const writingGuidance = splitGuidanceLines(sanitizedContractText);
-  const sanitizedGenerationProfile: StyleSanitizedGenerationProfile = {
+  return {
     writingGuidance,
     forbiddenEntities,
     sourceProfileNames,
     sanitizedAt: now.toISOString(),
     strategy: "deterministic",
   };
+}
+
+export function sanitizeStyleContextForGeneration(
+  context: ResolvedStyleContext,
+  now: Date = new Date(),
+): ResolvedStyleContext {
   return {
     ...context,
-    sanitizedGenerationProfile,
+    sanitizedGenerationProfile: context.sanitizedGenerationProfile ?? sanitizeStyleContractForGeneration(
+      context.compiledBlocks?.contract,
+      (context.matchedBindings ?? []).flatMap((binding) => binding.styleProfile ? [binding.styleProfile] : []),
+      now,
+    ),
   };
+}
+
+export function resolveStyleGenerationProfile(
+  context: StyleGenerationContext | null | undefined,
+): StyleSanitizedGenerationProfile | undefined {
+  if (!context) {
+    return undefined;
+  }
+  return context.sanitizedGenerationProfile ?? sanitizeStyleContractForGeneration(
+    context.compiledBlocks?.contract,
+    (context.matchedBindings ?? []).flatMap((binding) => binding.styleProfile ? [binding.styleProfile] : []),
+  );
+}
+
+export function redactStyleSourceReferences(
+  text: string,
+  generationProfile: StyleSanitizedGenerationProfile | null | undefined,
+): string {
+  if (!generationProfile) {
+    return text;
+  }
+  return redactForbiddenEntities(text, [
+    ...generationProfile.forbiddenEntities,
+    ...generationProfile.sourceProfileNames,
+  ]);
 }
 
 export function detectForbiddenStyleEntities(

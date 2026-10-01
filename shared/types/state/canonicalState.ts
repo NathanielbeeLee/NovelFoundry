@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { canonicalCharacterResourceSummarySchema } from "../characterResource";
+import { canonicalCharacterResourceSummarySchema } from "../characterResource.js";
 
 export const canonicalStateRiskLevelSchema = z.enum(["low", "medium", "high"]);
 

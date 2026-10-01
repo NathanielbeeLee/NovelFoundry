@@ -25,6 +25,7 @@ import {
 import { getStructuredFallbackSettings } from "./structuredFallbackSettings";
 import { extractLlmTokenUsage, mergeStreamTokenUsage } from "./usageTracking";
 import { runWithEnforcedTimeout } from "./invokeTimeout";
+import { isLlmInvocationCancelled } from "./streamOutcome";
 import { beginLlmLiveSession } from "../platform/llm/live/llmLiveSession";
 import {
   buildStructuredError,
@@ -379,6 +380,9 @@ async function tryStructuredStrategies<T>(input: {
         fallbackAvailable: input.fallbackAvailable,
         fallbackUsed: input.fallbackUsed,
       });
+      if (isLlmInvocationCancelled(lastError)) {
+        throw lastError;
+      }
       if (
         (lastError.category === "transport_error" && !lastError.retryWithNextStrategy)
         || lastError.category === "usage_budget_exceeded"
@@ -433,6 +437,9 @@ export async function invokeStructuredLlmDetailed<T>(input: StructuredInvokeInpu
       fallbackUsed: false,
     });
   } catch (primaryError) {
+    if (isLlmInvocationCancelled(primaryError)) {
+      throw primaryError;
+    }
     if (primaryError instanceof StructuredOutputError && primaryError.category === "usage_budget_exceeded") {
       throw primaryError;
     }

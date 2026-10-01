@@ -3,6 +3,7 @@ import type { CompiledStylePromptBlocks } from "@novelfoundry/shared/types/style
 import { runTextPrompt } from "../../prompting/core/promptRunner";
 import { styleGenerationPrompt } from "../../prompting/prompts/style/style.prompts";
 import { StyleRuntimeResolver } from "./StyleRuntimeResolver";
+import { resolveStyleGenerationProfile } from "./styleGenerationSanitizer";
 
 interface TestWriteInput {
   styleProfileId: string;
@@ -41,10 +42,11 @@ ${input.topic ?? ""}`;
     const result = await runTextPrompt({
       asset: styleGenerationPrompt,
       promptInput: {
-        styleBlock: resolved.context.compiledBlocks.style,
-        characterBlock: resolved.context.compiledBlocks.character,
-        antiAiBlock: resolved.context.compiledBlocks.antiAi,
-        selfCheckBlock: resolved.context.compiledBlocks.selfCheck,
+        styleContractText: resolveStyleGenerationProfile(resolved.context)?.writingGuidance.join("\n") ?? "",
+        styleBlock: "",
+        characterBlock: "",
+        antiAiBlock: "",
+        selfCheckBlock: "",
         mode: input.mode,
         prompt,
         targetLength,
