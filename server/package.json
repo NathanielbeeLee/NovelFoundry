@@ -49,7 +49,6 @@
   "dependencies": {
     "@novelfoundry/shared": "workspace:*",
     "@aws-sdk/client-s3": "^3.910.0",
-    "@langchain/community": "^1.1.21",
     "@langchain/core": "^1.1.29",
     "@langchain/langgraph": "^1.2.0",
     "@langchain/openai": "^1.2.11",
@@ -61,7 +60,6 @@
     "dotenv": "^17.3.1",
     "express": "^5.2.1",
     "helmet": "^8.1.0",
-    "langchain": "^1.2.28",
     "morgan": "^1.10.1",
     "sharp": "^0.35.1",
     "zod": "^4.3.6"

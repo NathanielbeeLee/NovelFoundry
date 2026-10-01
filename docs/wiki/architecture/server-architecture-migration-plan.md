@@ -28,13 +28,26 @@ the current server runnable.
    each phase.
 6. Delete a shim only when all callers use the stable facade.
 
-## Priority order
+## Established capability ownership
 
-1. Novel edit composition and workflow hooks.
-2. Shared director runtime contracts and comic character composition.
-3. Director takeover, workspace analysis, and event projections.
-4. Dense route directories and legacy novel services.
-5. Cross-module deep imports and compatibility shims.
+Novel editing and comic panels compose owned hooks, domain rules, and view
+components. Shared contracts live in capability folders behind existing public
+package paths. Director runtime implementation folders separate execution,
+state, artifacts, projections, commands, recovery, automation, and sessions.
+
+Novel application capabilities share one dependency context. Core CRUD, volume
+workspace persistence, cast preparation, character dynamics, style profiles,
+and extraction tasks have explicit owners behind the existing service entries.
+Comic and drama HTTP mapping uses ordered capability registrars on one router.
+These boundaries preserve one production chain and one persisted state source.
+
+## Remaining migration direction
+
+As a capability needs substantial implementation work, move its platform calls
+and HTTP mapping toward the target owners above. Keep existing thin facades
+until consumers can migrate together. Do not move functioning subsystems solely
+to make every path match the future top-level spelling; ownership and dependency
+direction are the acceptance criteria.
 
 ## Established world boundaries
 

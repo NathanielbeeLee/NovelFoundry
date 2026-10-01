@@ -39,6 +39,20 @@ reviewed publication snapshot. Earlier history and removed materials are kept
 in verified local maintainer archives; public docs must not send readers to
 unavailable pre-publication commits.
 
+## Dependency ownership
+
+Keep direct dependencies that source, tests, configuration, or maintained
+scripts actually consume. Type packages and build plugins may be consumed
+implicitly by compiler and tool configuration; a missing import alone is not
+proof that they are unused. A transitive package belongs to the package that
+uses it and does not need a redundant workspace dependency declaration.
+
+After removing a proven unused dependency, regenerate the lockfile, confirm
+remaining registry package versions, and verify compilation with synchronized
+local dependency links. Keep workspace injection aligned with `.npmrc` and
+`pnpm-workspace.yaml`; desktop staging depends on that contract. Do not combine
+dependency cleanup with unrequested package upgrades.
+
 ## Compatibility and attribution
 
 The current product namespace is NovelFoundry. Earlier names are allowed only

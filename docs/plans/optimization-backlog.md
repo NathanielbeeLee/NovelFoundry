@@ -1,6 +1,6 @@
 # NovelFoundry Optimization Backlog
 
-Updated: 2026-09-30
+Updated: 2026-10-01
 
 This page records follow-up work after the current foundation pass. Items are
 not known blocking failures and are not claims that the work is already
@@ -20,6 +20,13 @@ implemented.
   facades, separating deterministic domain rules from AI assets and adapters.
 - Kept local data, tooling, and recovery archives outside the published source
   and Docker build context.
+- Split the remaining oversized production sources into owned workflow,
+  contract, projection, persistence, and presentation modules while retaining
+  public entry points.
+- Organized shared contracts by product capability and director runtime
+  implementations by execution, state, recovery, projection, and session owner.
+- Removed unused direct dependencies and an unconnected placeholder page and
+  API. Reproducible manifests and the lockfile remain the dependency contract.
 
 ## Follow-up priorities
 
@@ -29,21 +36,6 @@ Build deterministic fixtures for service restart, LLM timeout, malformed JSON,
 repair failure with usable text, repeated state synchronization, duplicate
 continue commands, expired command leases, and resume into the next chapter.
 Cover the smallest SQLite and PostgreSQL startup and recovery smoke paths.
-
-### P1: Large-file responsibility split
-
-Continue one subsystem at a time while preserving facades:
-
-- `client/src/pages/novels/NovelEdit.tsx`: route composition, director state,
-  chapter workspace, and form areas;
-- `shared/types/directorRuntime.ts`: separate runtime state, checkpoint, and
-  projection contracts through the shared package facade;
-- `client/src/pages/comic/project/CharactersPanel.tsx`: separate selection
-  rules, workflow hooks, and panel composition;
-- director takeover and workspace analysis: analysis, plan construction,
-  execution continuation, and projection;
-- high-density director directories: commands, state, recovery, and
-  projections.
 
 ### P2: Cost and quality budget estimates
 
@@ -64,12 +56,6 @@ Derive completion rate, checkpoint recovery success, duplicate-command blocks,
 quality-debt lifecycle, and estimated-versus-actual usage from existing task,
 runtime, artifact, and quality projections. Do not introduce a second state
 source.
-
-### P3: Placeholder-entry audit
-
-Review placeholder routes such as astrology after checking navigation and
-integration dependencies. Hide, move, or retain an entry only after its
-consumer paths are understood.
 
 ## Working rules
 
