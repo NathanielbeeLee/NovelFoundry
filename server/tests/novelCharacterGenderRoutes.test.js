@@ -171,6 +171,7 @@ test("character routes accept and return gender fields", async () => {
         role: "宫廷前辈",
         gender: "male",
         castRole: "mentor",
+        importanceTier: "major",
         summary: "熟悉内廷规矩的前辈宦者。",
         storyFunction: "带主角看见秦宫规矩和赵高旧事。",
         relationToProtagonist: "半引路半试探",
@@ -181,6 +182,7 @@ test("character routes accept and return gender fields", async () => {
     const supplementalPayload = await supplementalResponse.json();
     assert.equal(supplementalPayload.data.character.gender, "male");
     assert.equal(captured.supplementalBody.gender, "male");
+    assert.equal(captured.supplementalBody.importanceTier, "major");
   } finally {
     DefaultNovelApplicationServices.prototype.createCharacter = originalCreateCharacter;
     DefaultNovelApplicationServices.prototype.updateCharacter = originalUpdateCharacter;
