@@ -65,10 +65,10 @@ through explicit facades or module entry points.
 
 ## Client route boundary
 
-`client/src/pages/novels/NovelEdit.tsx` remains a route-level integration
-surface. It coordinates queries, mutations, director projections, chapter
-execution, navigation, and the presentation shell. It must gradually become a
-composition layer rather than the owner of pure rules or browser effects.
+`client/src/pages/novels/NovelEdit.tsx` is the stable route facade. The
+`novelEdit/` feature composes queries, mutations, director projections, chapter
+execution, navigation, and the presentation shell through owned hooks and
+components. Keep pure rules and browser effects with their dedicated owners.
 
 Its feature boundary is:
 
@@ -76,29 +76,58 @@ Its feature boundary is:
 - `novelEdit/infrastructure/`: downloads, storage, and other browser effects;
 - `novelEdit/hooks/`: one workflow area's orchestration;
 - `novelEdit/components/`: presentation and interaction;
-- `NovelEdit.tsx`: cross-area composition and compatibility wiring.
+- the feature entry: cross-area composition;
+- `NovelEdit.tsx`: the route import contract.
 
 When extracting code, preserve query keys, task identifiers, checkpoint
 semantics, and navigation contracts first. Do not replace a large file with
 unowned `utils` or `helpers` files.
 
-## Refactoring sequence
+### Production chunk ownership
 
-The current high-risk files are tracked as one coherent migration sequence:
+Keep React and shared runtime helpers in the eagerly loaded vendor chunk.
+Editing, graph, Markdown, and assistant runtimes belong to their feature
+chunks. A shared preload helper must not pull an editor into the startup
+dependency graph. When changing chunk ownership, inspect the generated static
+imports, exported bindings, references, and cycles; a smaller individual chunk
+does not prove that the initial dependency closure is smaller.
 
-1. Extract novel-edit data selection and director projection into owned domain
-   modules, then move workflow mutations into focused hooks.
-2. Keep world structure behind `server/src/services/world/structure/index.ts`:
-   pure normalization in `domain/`, seed composition in `application/`, JSON
-   decoding in `infrastructure/`, and read-only views in `presentation/`.
-   The existing `worldStructure.ts` path is a compatibility facade. World
-   prompt assets live in stage-owned folders behind `world.prompts.ts`.
-3. Split director takeover and workspace analysis by responsibility: analysis,
-   plan construction, execution continuation, and projection.
-4. Reduce high-density director directories by moving commands, state,
-   recovery, and projections into their responsibility folders.
-5. Delete compatibility shims only after all callers use stable facades and the
-   targeted typecheck or service check passes.
+## Established implementation boundaries
+
+| Capability | Implementation owner | Stable consumer entry |
+| --- | --- | --- |
+| Shared product contracts | capability folders under `shared/types/` | existing package export paths |
+| Novel editing | `client/src/pages/novels/novelEdit/` | `NovelEdit.tsx` |
+| Comic workspaces | feature folders under `client/src/pages/comic/project/` | existing panel components |
+| Comic API | `client/src/api/comic/` | `client/src/api/comic.ts` |
+| Director orchestration | responsibility folders under `services/novel/director/runtime/` | existing runtime service facades |
+| Novel application composition | `services/novel/application/capabilities/` | `NovelApplicationServices.ts` |
+| Novel CRUD | `services/novel/coreCrud/` | `novelCoreCrudService.ts` |
+| World structure, workspace, visualization | `services/world/{structure,workspace,visualization}/` | existing world service facades |
+| Volume workspace and comparison | `services/novel/volume/{workspace,changeDetection}/` | existing volume service facades |
+| Cast, dynamics, library synchronization | owned `cast/`, `mutations/`, and `librarySync/` folders | existing character service facades |
+| Style profiles and extraction scheduling | `services/styleEngine/{profiles,extractionTasks}/` | existing style service facades |
+| Prompt assets and inspection | stage-owned assets and `prompting/workbench/` | registry and workbench service |
+| Comic and drama HTTP | capability registrars in module `http/` folders | existing router entries |
+
+The comic fact service owns episode reads and fact persistence. The registered
+`comic.factExtraction` asset owns the structured schema and generation
+instructions. Prompt Workbench and live prompt labels use that same identity,
+so inspection remains consistent with the production call.
+
+Internal capability bases execute on the original service instance to preserve
+injected dependencies and `this` calls. They are implementation details, not
+additional public services. Application composition installs native method
+descriptors without constructing another set of dependency instances.
+
+HTTP registrars receive one shared router in the original route sequence.
+Introducing nested routers can change precedence; it requires a separate
+contract review. Shared facade files retain old import paths without duplicating
+schema or business implementations.
+
+Delete a compatibility shim only after all callers use a stable entry and the
+targeted typecheck or service check passes. Keep implementation files within
+the size and directory-density limits in the project architecture rules.
 
 Each phase should move one subsystem, preserve behavior, document a durable
 boundary when needed, and make a focused verification pass. Do not combine a

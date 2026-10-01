@@ -79,14 +79,50 @@ export default defineConfig({
     rollupOptions: {
       output: {
         manualChunks(id) {
-          if (!id.includes("node_modules")) {
+          const modulePath = id.replaceAll("\\", "/");
+          // Shared runtime helpers must stay with the eagerly loaded runtime.
+          if (
+            modulePath === "\0vite/preload-helper.js" ||
+            modulePath === "\0commonjsHelpers.js"
+          ) {
+            return "vendor";
+          }
+
+          const marker = "/node_modules/";
+          const offset = modulePath.lastIndexOf(marker);
+          if (offset < 0) {
             return undefined;
           }
-          if (id.includes("@assistant-ui") || id.includes("@langchain/langgraph-sdk")) {
+          const parts = modulePath.slice(offset + marker.length).split("/");
+          const packageName = parts[0].startsWith("@")
+            ? parts.slice(0, 2).join("/")
+            : parts[0];
+
+          if (
+            packageName.startsWith("@assistant-ui/") ||
+            packageName === "@langchain/langgraph-sdk"
+          ) {
             return "assistant-ui";
           }
-          if (id.includes("platejs") || id.includes("@platejs")) {
+          if (packageName === "platejs" || packageName.startsWith("@platejs/")) {
             return "plate-editor";
+          }
+          if (
+            packageName.startsWith("@xyflow/") ||
+            packageName.startsWith("d3-") ||
+            packageName === "internmap"
+          ) {
+            return "graph";
+          }
+          // The syntax theme is imported by the app shell.
+          if (packageName === "highlight.js" && modulePath.endsWith(".css")) {
+            return "vendor";
+          }
+          if (
+            ["react-markdown", "unified", "micromark", "vfile", "lowlight", "highlight.js"].includes(packageName) ||
+            ["rehype-", "remark-", "micromark-", "mdast-", "hast-", "unist-", "vfile-"].some((prefix) => packageName.startsWith(prefix))
+          ) {
+            return "markdown";
           }
           return "vendor";
         },

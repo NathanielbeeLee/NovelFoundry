@@ -8,6 +8,8 @@ below; their source evidence is retained in local maintainer archives.
 
 ### 2026-10-01
 
+- The workspace loads editing, graph, and Markdown tools when their pages need
+  them, reducing the compressed JavaScript required at startup by about 30%.
 - Prompt Workbench lists comic visual-fact extraction so you can inspect the
   instructions that help keep characters, places, props, and states consistent
   across episodes.
