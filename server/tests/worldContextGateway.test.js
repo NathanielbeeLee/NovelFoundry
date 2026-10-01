@@ -108,6 +108,7 @@ test("gateway delegates novel theme world generation through novel world service
 
   const result = await gateway.generateWorldFromNovelTheme("novel-1", {
     saveToLibrary: true,
+    openingOnly: true,
     provider: "deepseek",
     model: "deepseek-chat",
     temperature: 0.4,
@@ -117,6 +118,7 @@ test("gateway delegates novel theme world generation through novel world service
   assert.deepEqual(calls, [{
     novelId: "novel-1",
     saveToLibrary: true,
+    openingOnly: true,
     provider: "deepseek",
     model: "deepseek-chat",
     temperature: 0.4,
