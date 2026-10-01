@@ -9,7 +9,6 @@ import type { ApiResponse } from "@novelfoundry/shared/types/api";
 import { ensureRuntimeDatabaseReady } from "./db/runtimeMigrations";
 import { errorHandler } from "./middleware/errorHandler";
 import { loadProviderApiKeys } from "./llm/factory";
-import astrologyRouter from "./routes/astrology";
 import agentCatalogRouter from "./routes/agentCatalog";
 import agentRunsRouter from "./routes/agentRuns";
 import autoDirectorChannelCallbacksRouter from "./routes/autoDirectorChannelCallbacks";
@@ -158,7 +157,6 @@ export function createApp() {
   app.use("/api/auto-director/channel-callbacks", autoDirectorChannelCallbacksRouter);
   app.use("/api/settings", settingsRouter);
   app.use("/api", onboardingRoutes);
-  app.use("/api/astrology", astrologyRouter);
 
   app.use((_req, res) => {
     const response: ApiResponse<null> = {
