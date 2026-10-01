@@ -262,16 +262,10 @@ are retained in [NOTICE](NOTICE).
 
 ## Latest update
 
-### 2026-09-30
+### 2026-10-01
 
-- NovelFoundry's source is available in its own public repository, with
-  installation instructions and contributor documentation.
-- Use `main` to clone the project or contribute changes; it is the default
-  development branch.
-- Explore creation modes, model options, and export tools through a focused
-  quick start, feature highlights, and NovelFoundry artwork.
-- Existing local settings, portable novel backups, and earlier desktop data
-  remain readable while NovelFoundry uses its own configuration names.
-- First-run setup prepares local storage before applying the project structure.
+- Prompt Workbench lists comic visual-fact extraction so you can inspect the
+  instructions that help keep characters, places, props, and states consistent
+  across episodes.
 
 Full history is available in [docs/releases/release-notes.md](docs/releases/release-notes.md).

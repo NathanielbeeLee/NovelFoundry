@@ -7,6 +7,7 @@ const SERVER_ROOT = path.join(__dirname, "..");
 const SOURCE_ROOT = path.join(SERVER_ROOT, "src");
 const PROMPT_ROOT = path.join(SOURCE_ROOT, "prompting", "prompts");
 const {
+  getRegisteredPromptAsset,
   listRegisteredPromptAssets,
 } = require("../dist/prompting/registry.js");
 
@@ -169,6 +170,18 @@ test("prompt governance keeps registered prompt assets auditable", () => {
     .map((asset) => `${asset.id || "<missing-id>"}@${asset.version || "<missing-version>"}`);
 
   assert.deepEqual(incomplete, []);
+
+  const comicFactAsset = getRegisteredPromptAsset("comic.factExtraction", "v1");
+  assert.equal(
+    comicFactAsset,
+    require("../dist/prompting/prompts/comic/factExtraction.prompts.js").comicFactExtractionPrompt,
+  );
+  assert.equal(comicFactAsset.taskType, "chapter_drafting");
+  assert.equal(comicFactAsset.mode, "structured");
+  assert.deepEqual(
+    comicFactAsset.outputSchema.parse({ facts: [{ text: "主角右臂留下刀疤。" }] }),
+    { facts: [{ text: "主角右臂留下刀疤。", category: "completed" }] },
+  );
 });
 
 test("core prompt management surfaces expose context and low-risk slot metadata", () => {

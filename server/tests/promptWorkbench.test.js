@@ -2,6 +2,9 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 
 const { PromptWorkbenchService } = require("../dist/prompting/PromptWorkbenchService.js");
+const { chapterWriterPrompt } = require("../dist/prompting/prompts/novel/chapterWriter.prompts.js");
+const { formatPromptLiveLabel } = require("../dist/prompting/promptCatalog.js");
+const CHAPTER_WRITER_PROMPT_KEY = `${chapterWriterPrompt.id}@${chapterWriterPrompt.version}`;
 const { ContextBroker } = require("../dist/prompting/context/ContextBroker.js");
 const { createDefaultContextResolverRegistry } = require("../dist/prompting/context/defaultContextRegistry.js");
 const {
@@ -79,7 +82,7 @@ test("prompt workbench catalog exposes registered prompts without override execu
   assert.ok(planner.lockedFields.includes("approvalBoundary"));
 
   const chapterWriter = service.listCatalog({ keyword: "novel.chapter.writer" })
-    .find((item) => item.key === "novel.chapter.writer@v6");
+    .find((item) => item.key === CHAPTER_WRITER_PROMPT_KEY);
   assert.ok(chapterWriter);
   assert.equal(chapterWriter.slotSupported, true);
   assert.equal(chapterWriter.managementStatus, "complete");
@@ -87,6 +90,18 @@ test("prompt workbench catalog exposes registered prompts without override execu
   assert.equal(chapterWriter.shortDescription, "章节正文生成");
   assert.ok(chapterWriter.slots.some((slot) => slot.key === "writer.antiAiRules"));
   assert.ok(chapterWriter.lockedFields.includes("contextPolicy"));
+
+  const comicFact = service.listCatalog({ keyword: "comic.factExtraction" })
+    .find((item) => item.key === "comic.factExtraction@v1");
+  assert.ok(comicFact);
+  assert.equal(comicFact.shortDescription, "漫画视觉事实提取");
+  assert.match(comicFact.description, /跨话保持一致/);
+  assert.equal(comicFact.outputType, "structured");
+  assert.equal(comicFact.capabilities.hasOutputSchema, true);
+  assert.equal(
+    formatPromptLiveLabel({ promptId: comicFact.id, promptVersion: comicFact.version, taskType: comicFact.taskType }),
+    "漫画视觉事实提取 · comic.factExtraction@v1",
+  );
 
   const completeCatalog = service.listCatalog();
   assert.equal(completeCatalog.some((item) => item.shortDescription === "内部提示词"), false);
@@ -377,7 +392,7 @@ test("prompt preview assembles selected novel chapter write context for chapter 
   });
 
   const preview = await service.preview({
-    promptKey: "novel.chapter.writer@v6",
+    promptKey: CHAPTER_WRITER_PROMPT_KEY,
     promptInput: {
       novelTitle: "当代码开始杀人",
       chapterOrder: 3,
@@ -501,7 +516,7 @@ test("prompt preview renders unsaved advanced template draft without reading act
 
   try {
     const preview = await service.preview({
-      promptKey: "novel.chapter.writer@v6",
+      promptKey: CHAPTER_WRITER_PROMPT_KEY,
       promptInput: {
         novelTitle: "模板测试书",
         chapterOrder: 2,
