@@ -1005,9 +1005,14 @@ test("continueTask normalizes auto_execute_range into skip_quality_repair at a q
   const originalMarkTaskRunning = service.workflowService.markTaskRunning;
   const originalScheduleBackgroundRun = service.scheduleBackgroundRun;
   const originalRunFromReady = service.autoExecutionRuntime.runFromReady;
+  const originalReplanNovel = service.novelService.replanNovel;
+  const originalChapterFindFirst = prisma.chapter.findFirst;
+  const originalReplanFindFirst = prisma.replanRun.findFirst;
   const runningCalls = [];
   const scheduledRuns = [];
   const runtimeCalls = [];
+  const replanCalls = [];
+  const executionOrder = [];
   const restoreDirectorRunNode = stubDirectorRuntimeNode(service);
 
   service.continueCandidateStageTask = async () => false;
@@ -1065,8 +1070,27 @@ test("continueTask normalizes auto_execute_range into skip_quality_repair at a q
   service.scheduleBackgroundRun = (taskId, runner) => {
     scheduledRuns.push({ taskId, runner });
   };
+  // An explicit replan checkpoint resolves its chapter window before execution.
+  prisma.chapter.findFirst = async ({ where }) => {
+    assert.equal(where.novelId, "novel_quality_repair_skip_normalized");
+    assert.deepEqual(where.order, { gte: 5, lte: 8 });
+    assert.deepEqual(where.OR, [{ content: null }, { content: "" }]);
+    return { id: "chapter_6" };
+  };
+  prisma.replanRun.findFirst = async ({ where }) => {
+    assert.deepEqual(where, {
+      novelId: "novel_quality_repair_skip_normalized",
+      chapterId: "chapter_6",
+    });
+    return null;
+  };
+  service.novelService.replanNovel = async (novelId, input) => {
+    replanCalls.push({ novelId, ...input });
+    executionOrder.push("replan");
+  };
   service.autoExecutionRuntime.runFromReady = async (input) => {
     runtimeCalls.push(input);
+    executionOrder.push("execute");
   };
 
   try {
@@ -1079,6 +1103,12 @@ test("continueTask normalizes auto_execute_range into skip_quality_repair at a q
 
     await scheduledRuns[0].runner();
 
+    assert.equal(replanCalls.length, 1);
+    assert.equal(replanCalls[0].novelId, "novel_quality_repair_skip_normalized");
+    assert.equal(replanCalls[0].chapterId, "chapter_6");
+    assert.equal(replanCalls[0].triggerType, "director_replan_recovery");
+    assert.equal(replanCalls[0].windowSize, 3);
+    assert.deepEqual(executionOrder, ["replan", "execute"]);
     assert.equal(runtimeCalls.length, 1);
     assert.equal(runtimeCalls[0].resumeCheckpointType, "replan_required");
     assert.equal(runtimeCalls[0].skipCurrentQualityRepair, true);
@@ -1090,6 +1120,9 @@ test("continueTask normalizes auto_execute_range into skip_quality_repair at a q
     service.workflowService.markTaskRunning = originalMarkTaskRunning;
     service.scheduleBackgroundRun = originalScheduleBackgroundRun;
     service.autoExecutionRuntime.runFromReady = originalRunFromReady;
+    service.novelService.replanNovel = originalReplanNovel;
+    prisma.chapter.findFirst = originalChapterFindFirst;
+    prisma.replanRun.findFirst = originalReplanFindFirst;
     restoreDirectorRunNode();
   }
 });
