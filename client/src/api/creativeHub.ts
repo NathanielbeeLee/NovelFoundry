@@ -8,6 +8,7 @@ import type {
 } from "@novelfoundry/shared/types/creativeHub";
 import { API_BASE_URL } from "@/lib/constants";
 import { apiClient } from "./client";
+import { readCreativeHubStream } from "./creativeHub/streaming";
 
 function ensureThreadId(threadId: string): string {
   const normalized = threadId.trim();
@@ -113,32 +114,5 @@ export async function* streamCreativeHubRun(
     throw new Error(`创作中枢请求失败，状态码 ${response.status}`);
   }
 
-  const reader = response.body.getReader();
-  const decoder = new TextDecoder("utf-8");
-  let buffer = "";
-
-  while (true) {
-    const { value, done } = await reader.read();
-    if (done) {
-      break;
-    }
-
-    buffer += decoder.decode(value, { stream: true });
-    const frames = buffer.split("\n\n");
-    buffer = frames.pop() ?? "";
-
-    for (const rawFrame of frames) {
-      const payloadLine = rawFrame
-        .split("\n")
-        .find((line) => line.startsWith("data:"));
-      if (!payloadLine) {
-        continue;
-      }
-      const rawData = payloadLine.replace("data:", "").trim();
-      if (!rawData) {
-        continue;
-      }
-      yield JSON.parse(rawData) as CreativeHubStreamFrame;
-    }
-  }
+  yield* readCreativeHubStream(response.body, resolvedThreadId, abortSignal);
 }

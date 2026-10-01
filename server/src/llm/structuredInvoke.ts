@@ -9,7 +9,6 @@ import {
   resolveLLMClientOptions,
   type ResolvedLLMClientOptions,
 } from "./factory";
-import { resolveModel, toStructuredOutputStrategy } from "./modelRouter";
 import {
   buildStructuredResponseFormat,
   classifyStructuredOutputFailure,
@@ -36,6 +35,12 @@ import {
 } from "./structuredInvokeParser";
 import { toText } from "../services/novel/novelP0Utils";
 import { ReasoningStreamCollector } from "./reasoning";
+import {
+  buildStrategySequence, computeAttemptTemperature, resolveAttemptTarget,
+  type StructuredAttemptTarget, type PreparedStructuredAttempt, type PreparedStructuredTarget,
+  type PreparedStructuredInvocation,
+} from "./structuredInvocation";
+export { prepareStructuredLlmInvocation, type PreparedStructuredInvocation } from "./structuredInvocation";
 import { formatLivePrompt } from "../platform/llm/live/llmLiveSession";
 import type { PromptInvocationMeta } from "../prompting/core/promptTypes";
 
@@ -70,20 +75,7 @@ export interface StructuredInvokeInput<T> {
   maxRepairSourceTokens?: number;
   promptMeta?: PromptInvocationMeta;
   disableFallbackModel?: boolean;
-}
-
-interface StructuredAttemptTarget {
-  provider: LLMProvider;
-  model: string;
-  apiKey?: string;
-  baseURL?: string;
-  authMode?: ProviderAuthMode;
-  reasoningEnabled?: boolean;
-  temperature: number;
-  maxTokens?: number;
-  profile: StructuredOutputProfile;
-  requestProtocol: ResolvedLLMClientOptions["requestProtocol"];
-  preferredStrategy: StructuredOutputStrategy | null;
+  preparedInvocation?: PreparedStructuredInvocation;
 }
 
 function buildInvokeMessages<T>(input: StructuredInvokeInput<T>): BaseMessage[] {
@@ -96,92 +88,6 @@ function buildInvokeMessages<T>(input: StructuredInvokeInput<T>): BaseMessage[] 
   throw new Error(`[${input.label}] missing prompt messages.`);
 }
 
-function buildStrategySequence<T>(
-  profile: StructuredOutputProfile,
-  schema: ZodType<T>,
-): StructuredOutputStrategy[] {
-  const first = selectStructuredOutputStrategy(profile, schema);
-  const sequence: StructuredOutputStrategy[] = [first];
-  if (first === "json_schema" && profile.nativeJsonObject) {
-    sequence.push("json_object");
-  }
-  if (first !== "prompt_json") {
-    sequence.push("prompt_json");
-  }
-  return Array.from(new Set(sequence));
-}
-
-function computeAttemptTemperature(baseTemperature: number, strategyIndex: number): number {
-  if (strategyIndex === 0) {
-    return baseTemperature;
-  }
-  return Math.min(baseTemperature, 0.2);
-}
-
-async function resolveAttemptTarget(input: {
-  provider?: LLMProvider;
-  model?: string;
-  apiKey?: string;
-  baseURL?: string;
-  authMode?: ProviderAuthMode;
-  reasoningEnabled?: boolean;
-  temperature?: number;
-  maxTokens?: number;
-  maxTokensCap?: number;
-  taskType?: TaskType;
-  requestProtocol?: ModelRouteRequestProtocol;
-  structuredStrategy?: StructuredOutputStrategy;
-}): Promise<StructuredAttemptTarget> {
-  const shouldResolveRoutePreference = Boolean(
-    input.taskType
-      && input.provider == null
-      && input.model == null
-      && input.structuredStrategy == null,
-  );
-  const route = shouldResolveRoutePreference ? await resolveModel(input.taskType!) : null;
-  const resolved = await resolveLLMClientOptions(input.provider, {
-    fallbackProvider: "deepseek",
-    apiKey: input.apiKey,
-    baseURL: input.baseURL,
-    authMode: input.authMode,
-    reasoningEnabled: input.reasoningEnabled,
-    model: input.model,
-    temperature: input.temperature,
-    maxTokens: input.maxTokens,
-    taskType: input.taskType ?? "planner",
-    requestProtocol: input.requestProtocol,
-    structuredStrategy: input.structuredStrategy,
-    executionMode: "plain",
-  });
-  const preferredStrategy = input.structuredStrategy ?? (route
-    && resolved.provider === route.provider
-    && resolved.model === route.model
-    ? toStructuredOutputStrategy(route.structuredResponseFormat)
-    : null);
-  const maxTokens = typeof input.maxTokensCap === "number" && input.maxTokensCap > 0
-    ? Math.min(resolved.maxTokens ?? input.maxTokensCap, input.maxTokensCap)
-    : resolved.maxTokens;
-  return {
-    provider: resolved.provider,
-    model: resolved.model,
-    apiKey: input.apiKey,
-    baseURL: resolved.baseURL,
-    authMode: resolved.authMode,
-    reasoningEnabled: input.reasoningEnabled,
-    temperature: resolved.temperature,
-    maxTokens,
-    requestProtocol: resolved.requestProtocol,
-    preferredStrategy,
-    profile: resolveStructuredOutputProfile({
-      provider: resolved.provider,
-      model: resolved.model,
-      baseURL: resolved.baseURL,
-      executionMode: "structured",
-      requestProtocol: resolved.requestProtocol,
-    }),
-  };
-}
-
 async function invokeStructuredAttempt<T>(input: {
   baseInput: StructuredInvokeInput<T>;
   target: StructuredAttemptTarget;
@@ -189,9 +95,13 @@ async function invokeStructuredAttempt<T>(input: {
   strategyIndex: number;
   fallbackAvailable: boolean;
   fallbackUsed: boolean;
+  preparedAttempt?: PreparedStructuredAttempt;
 }): Promise<StructuredInvokeResult<T>> {
+  if (input.preparedAttempt?.preparationError) throw input.preparedAttempt.preparationError;
   const attemptTemperature = computeAttemptTemperature(input.target.temperature, input.strategyIndex);
-  const resolved = await resolveLLMClientOptions(input.target.provider, {
+  const resolved = input.preparedAttempt?.resolved
+    ? { ...input.preparedAttempt.resolved, promptMeta: input.baseInput.promptMeta }
+    : await resolveLLMClientOptions(input.target.provider, {
     fallbackProvider: "deepseek",
     apiKey: input.target.apiKey,
     baseURL: input.target.baseURL,
@@ -283,6 +193,8 @@ async function invokeStructuredAttempt<T>(input: {
     let repairStarted = false;
     const parsed = await parseStructuredLlmRawContentDetailed({
       rawContent,
+      preparedRepairClientOptions: input.preparedAttempt?.repairResolved,
+      preparedRepairError: input.preparedAttempt?.repairPreparationError,
       schema: input.baseInput.schema,
       tokenUsage: collected.tokenUsage,
       provider: resolved.provider,
@@ -351,14 +263,15 @@ async function tryStructuredStrategies<T>(input: {
   target: StructuredAttemptTarget;
   fallbackAvailable: boolean;
   fallbackUsed: boolean;
+  preparedTarget?: PreparedStructuredTarget;
 }): Promise<StructuredInvokeResult<T>> {
   const sequence = buildStrategySequence(input.target.profile, input.baseInput.schema);
-  const preferredSequence = input.target.preferredStrategy
+  const preferredSequence = input.preparedTarget?.attempts.map((attempt) => attempt.strategy) ?? (input.target.preferredStrategy
     ? [
       input.target.preferredStrategy,
       ...sequence.filter((strategy) => strategy !== input.target.preferredStrategy),
     ]
-    : sequence;
+    : sequence);
   let lastError: StructuredOutputError | null = null;
   for (let index = 0; index < preferredSequence.length; index += 1) {
     const strategy = preferredSequence[index]!;
@@ -368,6 +281,7 @@ async function tryStructuredStrategies<T>(input: {
         target: input.target,
         strategy,
         strategyIndex: index,
+        preparedAttempt: input.preparedTarget?.attempts[index],
         fallbackAvailable: input.fallbackAvailable,
         fallbackUsed: input.fallbackUsed,
       });
@@ -405,7 +319,8 @@ async function tryStructuredStrategies<T>(input: {
 }
 
 export async function invokeStructuredLlmDetailed<T>(input: StructuredInvokeInput<T>): Promise<StructuredInvokeResult<T>> {
-  const primaryTarget = await resolveAttemptTarget({
+  const plan = input.preparedInvocation;
+  const primaryTarget = plan?.primary.target ?? await resolveAttemptTarget({
     provider: input.provider,
     model: input.model,
     apiKey: input.apiKey,
@@ -419,8 +334,8 @@ export async function invokeStructuredLlmDetailed<T>(input: StructuredInvokeInpu
     requestProtocol: input.requestProtocol,
     structuredStrategy: input.structuredStrategy,
   });
-  const fallbackSettings = input.disableFallbackModel ? null : await getStructuredFallbackSettings();
-  const fallbackEnabled = Boolean(
+  const fallbackSettings = plan || input.disableFallbackModel ? null : await getStructuredFallbackSettings();
+  const fallbackEnabled = plan?.fallbackEnabled ?? Boolean(
     fallbackSettings?.enabled
     && fallbackSettings.model.trim().length > 0
     && !(
@@ -433,6 +348,7 @@ export async function invokeStructuredLlmDetailed<T>(input: StructuredInvokeInpu
     return await tryStructuredStrategies({
       baseInput: input,
       target: primaryTarget,
+      preparedTarget: plan?.primary,
       fallbackAvailable: fallbackEnabled,
       fallbackUsed: false,
     });
@@ -443,15 +359,16 @@ export async function invokeStructuredLlmDetailed<T>(input: StructuredInvokeInpu
     if (primaryError instanceof StructuredOutputError && primaryError.category === "usage_budget_exceeded") {
       throw primaryError;
     }
-    if (!fallbackEnabled || !fallbackSettings) {
+    if (!fallbackEnabled || (!plan && !fallbackSettings)) {
       throw primaryError;
     }
 
-    const fallbackTarget = await resolveAttemptTarget({
-      provider: fallbackSettings.provider,
-      model: fallbackSettings.model,
-      temperature: fallbackSettings.temperature,
-      maxTokens: fallbackSettings.maxTokens ?? undefined,
+    if (plan?.fallbackPreparationError) throw plan.fallbackPreparationError;
+    const fallbackTarget = plan?.fallback?.target ?? await resolveAttemptTarget({
+      provider: fallbackSettings!.provider,
+      model: fallbackSettings!.model,
+      temperature: fallbackSettings!.temperature,
+      maxTokens: fallbackSettings!.maxTokens ?? undefined,
       maxTokensCap: input.maxTokensCap,
       taskType: input.taskType ?? "planner",
     });
@@ -466,6 +383,7 @@ export async function invokeStructuredLlmDetailed<T>(input: StructuredInvokeInpu
           disableFallbackModel: true,
         },
         target: fallbackTarget,
+        preparedTarget: plan?.fallback ?? undefined,
         fallbackAvailable: true,
         fallbackUsed: true,
       });

@@ -2,16 +2,15 @@ import type { GenerationContextPackage } from "@novelfoundry/shared/types/chapte
 import { polishPrisma as prisma } from "../../../modules/novel/quality/polishPersistence";
 import {
   ChapterAcceptanceAssessmentService,
+  type AcceptanceAssessmentService,
   type ChapterAcceptanceAssessmentResult,
 } from "./ChapterAcceptanceAssessmentService";
 import type { ChapterRuntimeRequestInput } from "./chapterRuntimeSchema";
-import {
-  hashContent,
-  rememberCacheValue,
-} from "./chapterRuntimePackageBuilders";
+import { hashContent, rememberCacheValue } from "./chapterRuntimePackageBuilders";
+import { parseCachedAcceptanceResult } from "./acceptance";
 
 export interface ChapterQualityGateServiceDeps {
-  acceptanceAssessmentService?: Pick<ChapterAcceptanceAssessmentService, "assess">;
+  acceptanceAssessmentService?: AcceptanceAssessmentService;
 }
 
 export interface RunChapterQualityGatesInput {
@@ -22,257 +21,151 @@ export interface RunChapterQualityGatesInput {
   request: ChapterRuntimeRequestInput;
 }
 
-type QualityGateCacheKind = "acceptance";
-
-interface PersistedQualityGateCachePayload<T> {
-  schemaVersion: 1;
-  gate: QualityGateCacheKind;
+interface GateIdentity {
+  artifactType: string;
   contentHash: string;
   requestKey: string;
-  result: T;
+  syncMode: string;
 }
 
+interface PersistedAcceptancePayload {
+  schemaVersion: 2;
+  gate: "acceptance";
+  contentHash: string;
+  requestKey: string;
+  result: ChapterAcceptanceAssessmentResult;
+}
+
+type CacheInput = { novelId: string; chapterId: string; identity: GateIdentity };
+
 export class ChapterQualityGateService {
-  private readonly acceptanceAssessmentService: Pick<ChapterAcceptanceAssessmentService, "assess">;
-  private readonly acceptanceGateCache = new Map<string, Promise<ChapterAcceptanceAssessmentResult> | ChapterAcceptanceAssessmentResult>();
+  private readonly acceptanceAssessmentService: AcceptanceAssessmentService;
+  private readonly acceptanceGateCache = new Map<string, ChapterAcceptanceAssessmentResult>();
+  // Pending work must not be evicted by the bounded completed-result cache.
+  private readonly acceptanceInFlight = new Map<string, Promise<ChapterAcceptanceAssessmentResult>>();
 
   constructor(deps: ChapterQualityGateServiceDeps) {
     this.acceptanceAssessmentService = deps.acceptanceAssessmentService ?? new ChapterAcceptanceAssessmentService();
   }
 
-  private buildGateCacheKey(input: {
-    gate: QualityGateCacheKind;
-    novelId: string;
-    chapterId: string;
-    chapterOrder: number;
-    content: string;
-    request: ChapterRuntimeRequestInput;
-  }): string {
-    return [
-      input.gate,
-      input.novelId,
-      input.chapterId,
-      input.chapterOrder,
-      hashContent(input.content),
-      input.request.provider ?? "default-provider",
-      input.request.model ?? "default-model",
-      input.request.temperature ?? "default-temperature",
-    ].join(":");
-  }
-
   async runAcceptanceGate(input: RunChapterQualityGatesInput): Promise<ChapterAcceptanceAssessmentResult> {
-    const contentHash = hashContent(input.content);
     return this.traceChapterGate({
       novelId: input.novelId,
       chapterId: input.chapterId,
       chapterOrder: input.contextPackage.chapter.order,
       stage: "acceptance",
       blocking: true,
-      contentHash,
+      contentHash: hashContent(input.content),
       promptAssetKey: "novel.chapter.acceptance_assessment",
       run: () => this.loadAcceptanceAssessment(input),
     });
   }
 
-  private buildGateRequestKey(input: {
-    gate: QualityGateCacheKind;
-    request: ChapterRuntimeRequestInput;
-  }): string {
-    return hashContent(JSON.stringify({
-      gate: input.gate,
-      provider: input.request.provider ?? null,
-      model: input.request.model ?? null,
-      temperature: input.request.temperature ?? null,
-    }));
-  }
-
-  private buildPersistentGateIdentity(input: {
-    gate: QualityGateCacheKind;
-    novelId: string;
-    chapterId: string;
-    content: string;
-    request: ChapterRuntimeRequestInput;
-  }): {
-    artifactType: string;
-    contentHash: string;
-    requestKey: string;
-    syncMode: string;
-  } {
-    const requestKey = this.buildGateRequestKey({
-      gate: input.gate,
-      request: input.request,
-    });
+  private checkpointWhere(input: CacheInput) {
     return {
-      artifactType: `quality_gate_${input.gate}`,
-      contentHash: hashContent(input.content),
-      requestKey,
-      syncMode: `request_${requestKey.slice(0, 24)}`,
+      novelId_chapterId_contentHash_artifactType_syncMode: {
+        novelId: input.novelId, chapterId: input.chapterId,
+        contentHash: input.identity.contentHash, artifactType: input.identity.artifactType,
+        syncMode: input.identity.syncMode,
+      },
     };
   }
 
-  private async readPersistentGateCache<T>(input: {
-    gate: QualityGateCacheKind;
-    novelId: string;
-    chapterId: string;
-    content: string;
-    request: ChapterRuntimeRequestInput;
-  }): Promise<T | null> {
-    const identity = this.buildPersistentGateIdentity(input);
+  private async readPersistentGateCache(input: CacheInput): Promise<ChapterAcceptanceAssessmentResult | null> {
     try {
       const row = await prisma.chapterArtifactSyncCheckpoint.findUnique({
-        where: {
-          novelId_chapterId_contentHash_artifactType_syncMode: {
-            novelId: input.novelId,
-            chapterId: input.chapterId,
-            contentHash: identity.contentHash,
-            artifactType: identity.artifactType,
-            syncMode: identity.syncMode,
-          },
-        },
-        select: {
-          status: true,
-          metadataJson: true,
-        },
+        where: this.checkpointWhere(input), select: { status: true, metadataJson: true },
       });
-      if (row?.status !== "succeeded" || !row.metadataJson) {
-        return null;
-      }
-      const payload = JSON.parse(row.metadataJson) as PersistedQualityGateCachePayload<T>;
-      if (
-        payload.schemaVersion !== 1
-        || payload.gate !== input.gate
-        || payload.contentHash !== identity.contentHash
-        || payload.requestKey !== identity.requestKey
-      ) {
-        return null;
-      }
-      return payload.result;
+      if (row?.status !== "succeeded" || !row.metadataJson) return null;
+      const payload = JSON.parse(row.metadataJson) as PersistedAcceptancePayload;
+      if (payload.schemaVersion !== 2 || payload.gate !== "acceptance"
+        || payload.contentHash !== input.identity.contentHash || payload.requestKey !== input.identity.requestKey) return null;
+      const result = parseCachedAcceptanceResult(payload.result);
+      return result && this.isCacheableAcceptanceResult(result) ? result : null;
     } catch (error) {
-      console.warn("[chapter-runtime] quality gate cache read skipped", {
-        novelId: input.novelId,
-        chapterId: input.chapterId,
-        gate: input.gate,
-        error: error instanceof Error ? error.message : String(error),
-      });
+      this.warnCacheFailure("read", input, error);
       return null;
     }
   }
 
-  private async writePersistentGateCache<T>(input: {
-    gate: QualityGateCacheKind;
-    novelId: string;
-    chapterId: string;
-    content: string;
-    request: ChapterRuntimeRequestInput;
-    result: T;
-  }): Promise<void> {
-    const identity = this.buildPersistentGateIdentity(input);
-    const payload: PersistedQualityGateCachePayload<T> = {
-      schemaVersion: 1,
-      gate: input.gate,
-      contentHash: identity.contentHash,
-      requestKey: identity.requestKey,
-      result: input.result,
+  private async writePersistentGateCache(input: CacheInput & { result: ChapterAcceptanceAssessmentResult }): Promise<void> {
+    const payload: PersistedAcceptancePayload = {
+      schemaVersion: 2, gate: "acceptance", contentHash: input.identity.contentHash,
+      requestKey: input.identity.requestKey, result: input.result,
+    };
+    const data = {
+      status: "succeeded", sourceType: "chapter_quality_gate", sourceStage: "acceptance",
+      metadataJson: JSON.stringify(payload),
     };
     try {
       await prisma.chapterArtifactSyncCheckpoint.upsert({
-        where: {
-          novelId_chapterId_contentHash_artifactType_syncMode: {
-            novelId: input.novelId,
-            chapterId: input.chapterId,
-            contentHash: identity.contentHash,
-            artifactType: identity.artifactType,
-            syncMode: identity.syncMode,
-          },
-        },
+        where: this.checkpointWhere(input),
         create: {
-          novelId: input.novelId,
-          chapterId: input.chapterId,
-          contentHash: identity.contentHash,
-          artifactType: identity.artifactType,
-          syncMode: identity.syncMode,
-          status: "succeeded",
-          sourceType: "chapter_quality_gate",
-          sourceStage: input.gate,
-          metadataJson: JSON.stringify(payload),
+          novelId: input.novelId, chapterId: input.chapterId, contentHash: input.identity.contentHash,
+          artifactType: input.identity.artifactType, syncMode: input.identity.syncMode, ...data,
         },
-        update: {
-          status: "succeeded",
-          sourceType: "chapter_quality_gate",
-          sourceStage: input.gate,
-          metadataJson: JSON.stringify(payload),
-        },
+        update: data,
       });
     } catch (error) {
-      console.warn("[chapter-runtime] quality gate cache write skipped", {
-        novelId: input.novelId,
-        chapterId: input.chapterId,
-        gate: input.gate,
-        error: error instanceof Error ? error.message : String(error),
-      });
+      this.warnCacheFailure("write", input, error);
     }
   }
 
+  private warnCacheFailure(operation: "read" | "write", input: CacheInput, error: unknown): void {
+    console.warn(`[chapter-runtime] quality gate cache ${operation} skipped`, {
+      novelId: input.novelId, chapterId: input.chapterId, gate: "acceptance",
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+
   private isCacheableAcceptanceResult(result: ChapterAcceptanceAssessmentResult): boolean {
-    return !result.assessment.riskTags.includes("acceptance_gate_unavailable")
+    return Boolean(result?.assessment && Array.isArray(result.assessment.riskTags)
+      && Array.isArray(result.assessment.blockingIssues) && Array.isArray(result.issues) && Array.isArray(result.auditReports))
+      && !result.assessment.riskTags.includes("acceptance_gate_unavailable")
       && !result.assessment.blockingIssues.some((issue) => issue.code === "acceptance_gate_unavailable");
   }
 
   private async loadAcceptanceAssessment(input: RunChapterQualityGatesInput): Promise<ChapterAcceptanceAssessmentResult> {
-    const key = this.buildGateCacheKey({
-      gate: "acceptance",
-      novelId: input.novelId,
-      chapterId: input.chapterId,
-      chapterOrder: input.contextPackage.chapter.order,
-      content: input.content,
-      request: input.request,
-    });
-    const cached = this.acceptanceGateCache.get(key);
-    if (cached) {
-      return cached;
-    }
-    const persisted = await this.readPersistentGateCache<ChapterAcceptanceAssessmentResult>({
-      gate: "acceptance",
-      novelId: input.novelId,
-      chapterId: input.chapterId,
-      content: input.content,
-      request: input.request,
-    });
-    if (persisted) {
-      rememberCacheValue(this.acceptanceGateCache, key, persisted);
-      return persisted;
-    }
-    const assessmentPromise = this.acceptanceAssessmentService.assess({
-      novelId: input.novelId,
-      chapterId: input.chapterId,
+    const assessmentInput = {
+      novelId: input.novelId, chapterId: input.chapterId,
       novelTitle: input.contextPackage.bookContract?.title ?? input.contextPackage.chapter.title,
-      chapterTitle: input.contextPackage.chapter.title,
-      chapterOrder: input.contextPackage.chapter.order,
-      targetWordCount: input.contextPackage.chapter.targetWordCount ?? null,
-      content: input.content,
-      contextPackage: input.contextPackage,
-      provider: input.request.provider,
-      model: input.request.model,
-      temperature: input.request.temperature,
-    });
-    rememberCacheValue(this.acceptanceGateCache, key, assessmentPromise);
-    try {
-      const assessment = await assessmentPromise;
-      if (this.isCacheableAcceptanceResult(assessment)) {
-        await this.writePersistentGateCache({
-          gate: "acceptance",
-          novelId: input.novelId,
-          chapterId: input.chapterId,
-          content: input.content,
-          request: input.request,
-          result: assessment,
-        });
+      chapterTitle: input.contextPackage.chapter.title, chapterOrder: input.contextPackage.chapter.order,
+      targetWordCount: input.contextPackage.chapter.targetWordCount ?? null, content: input.content,
+      contextPackage: input.contextPackage, provider: input.request.provider,
+      model: input.request.model, temperature: input.request.temperature,
+    };
+    const prepared = await this.acceptanceAssessmentService.prepare?.(assessmentInput);
+    const requestKey = prepared?.identityDigest;
+    // Legacy/custom assessors without a verifiable prepared contract remain usable.
+    if (!requestKey) return this.acceptanceAssessmentService.assess(assessmentInput, prepared);
+    const identity: GateIdentity = {
+      artifactType: "quality_gate_acceptance", contentHash: hashContent(input.content), requestKey,
+      syncMode: `prepared_v2_${requestKey}`,
+    };
+    const key = [input.novelId, input.chapterId, identity.contentHash, requestKey].join(":");
+    const cached = this.acceptanceGateCache.get(key);
+    if (cached) return cached;
+    const pending = this.acceptanceInFlight.get(key);
+    if (pending) return pending;
+    const cacheInput: CacheInput = { novelId: input.novelId, chapterId: input.chapterId, identity };
+    const assessmentPromise = Promise.resolve().then(async () => {
+      const persisted = await this.readPersistentGateCache(cacheInput);
+      if (persisted) {
+        rememberCacheValue(this.acceptanceGateCache, key, persisted);
+        return persisted;
       }
-      rememberCacheValue(this.acceptanceGateCache, key, assessment);
-      return assessment;
-    } catch (error) {
-      this.acceptanceGateCache.delete(key);
-      throw error;
+      const result = await this.acceptanceAssessmentService.assess(assessmentInput, prepared);
+      if (this.isCacheableAcceptanceResult(result)) {
+        await this.writePersistentGateCache({ ...cacheInput, result });
+        rememberCacheValue(this.acceptanceGateCache, key, result);
+      }
+      return result;
+    });
+    this.acceptanceInFlight.set(key, assessmentPromise);
+    try {
+      return await assessmentPromise;
+    } finally {
+      if (this.acceptanceInFlight.get(key) === assessmentPromise) this.acceptanceInFlight.delete(key);
     }
   }
 

@@ -31,6 +31,10 @@ export interface CreativeHubGraphResult {
   turnSummary: CreativeHubTurnSummary | null;
 }
 
+export interface CreativeHubStreamGraphResult extends CreativeHubGraphResult {
+  runStatus: AgentRuntimeResult["run"]["status"] | null;
+}
+
 export const CreativeHubGraphState = Annotation.Root({
   invocationId: Annotation<string>(),
   threadId: Annotation<string>(),

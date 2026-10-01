@@ -28,8 +28,19 @@ is touched, migrate it into the registry before extending it.
 ## Runner choices
 
 - `runStructuredPrompt` for schema-validated output;
+- `prepareStructuredPromptExecution` and `runPreparedStructuredPrompt` when a
+  reusable result must bind the exact effective prompt and model configuration;
 - `runTextPrompt` for plain text;
 - `streamTextPrompt` and `streamStructuredPrompt` for streams.
 
 Keep the service public method, persistence, and response shape stable while
 moving prompt construction behind the registry.
+
+Prepared execution resolves overlays and supported advanced templates before
+computing its identity. It snapshots caller inputs, asset policies, selected
+context, rendered messages, and model attempts. Run the prepared object directly;
+calling `runStructuredPrompt` again would resolve mutable configuration again.
+Preparation does not invoke a model or emit a successful invocation. Contracts
+that cannot be represented safely remain executable but are excluded from reuse.
+See [prepared invocation](../llm/structuredInvocation/README.md) for the sensitive
+configuration boundary.

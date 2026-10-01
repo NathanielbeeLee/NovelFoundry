@@ -22,7 +22,7 @@ import {
 } from "./creativeHubRuntimeHelpers";
 import {
   CreativeHubGraphState,
-  type CreativeHubGraphResult,
+  type CreativeHubStreamGraphResult,
   type CreativeHubGraphStateValue,
   type CreativeHubRunSettings,
 } from "./langgraphState";
@@ -467,7 +467,7 @@ export class CreativeHubLangGraph {
     };
   }
 
-  async runThread(input: RunThreadInput, emitFrame: (frame: CreativeHubStreamFrame) => void): Promise<CreativeHubGraphResult> {
+  async runThread(input: RunThreadInput, emitFrame: (frame: CreativeHubStreamFrame) => void): Promise<CreativeHubStreamGraphResult> {
     const resourceBindings = toBindings(input.resourceBindings);
     const activeRuns = await this.store.listRuns({
       sessionId: `creative_hub_${input.threadId}`,
@@ -511,6 +511,7 @@ export class CreativeHubLangGraph {
 
       return {
         runId: result.runId,
+        runStatus: result.executionResult?.run.status ?? null,
         assistantOutput: result.executionResult?.assistantOutput ?? "",
         checkpoint: result.checkpoint,
         interrupts: result.interrupts,

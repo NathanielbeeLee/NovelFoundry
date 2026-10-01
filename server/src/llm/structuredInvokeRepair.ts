@@ -2,7 +2,7 @@ import { HumanMessage, SystemMessage } from "@langchain/core/messages";
 import { toJSONSchema, type ZodError, type ZodType } from "zod";
 import type { LLMProvider, ProviderAuthMode } from "@novelfoundry/shared/types/llm";
 import type { ModelRouteRequestProtocol } from "@novelfoundry/shared/types/novel";
-import { getLLM } from "./factory";
+import { createLLMFromResolvedOptions, getLLM, type ResolvedLLMClientOptions } from "./factory";
 import { runWithEnforcedTimeout } from "./invokeTimeout";
 import { logStructuredRepairSession } from "./repairLogging";
 import type { TaskType } from "./modelRouter";
@@ -26,6 +26,8 @@ export interface StructuredRepairInput<T> {
   schema: ZodType<T>;
   promptMeta?: PromptInvocationMeta;
   onRepairOutputDelta?: (content: string) => void;
+  preparedRepairClientOptions?: ResolvedLLMClientOptions;
+  preparedRepairError?: unknown;
 }
 
 interface ArrayLengthRepairHint {
@@ -166,7 +168,13 @@ export async function repairWithLlm<T>(
     repairAttempt,
     strategy: "prompt_json",
   });
-  const llm = await getLLM(input.provider, {
+  if (input.preparedRepairError) throw input.preparedRepairError;
+  const llm = input.preparedRepairClientOptions
+    ? createLLMFromResolvedOptions({
+      ...input.preparedRepairClientOptions,
+      promptMeta: input.promptMeta ? { ...input.promptMeta, repairUsed: true, repairAttempts: repairAttempt } : undefined,
+    })
+    : await getLLM(input.provider, {
     fallbackProvider: "deepseek",
     apiKey: input.apiKey,
     baseURL: input.baseURL,

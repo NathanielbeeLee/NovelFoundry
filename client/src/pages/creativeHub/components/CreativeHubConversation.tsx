@@ -30,6 +30,9 @@ interface CreativeHubConversationProps {
   errorMessage?: string;
   onRetry?: () => void;
   actionDisabled?: boolean;
+  runResultNotice?: string | null;
+  onRefreshRunResult?: () => void;
+  refreshingRunResult?: boolean;
 }
 
 export default function CreativeHubConversation({
@@ -45,6 +48,9 @@ export default function CreativeHubConversation({
   errorMessage = "",
   onRetry,
   actionDisabled = false,
+  runResultNotice,
+  onRefreshRunResult,
+  refreshingRunResult = false,
 }: CreativeHubConversationProps) {
   return (
     <CreativeHubInlineControlsProvider
@@ -86,6 +92,20 @@ export default function CreativeHubConversation({
               />
             ) : (
               <ThreadPrimitive.Root className="flex min-h-0 flex-1 flex-col space-y-4">
+                {runResultNotice ? (
+                  <WorkspaceStateNotice
+                    compact
+                    tone="warning"
+                    title="查看本轮任务结果"
+                    description={runResultNotice}
+                    action={(
+                      <Button type="button" size="sm" variant="outline" onClick={onRefreshRunResult} disabled={refreshingRunResult}>
+                        <RefreshCw className="mr-1.5 h-3.5 w-3.5" aria-hidden="true" />
+                        {refreshingRunResult ? "正在读取任务状态..." : "刷新任务状态"}
+                      </Button>
+                    )}
+                  />
+                ) : null}
                 <ThreadPrimitive.Viewport
                   className="min-h-0 flex-1 space-y-4 overflow-y-auto rounded-md border border-border/70 bg-muted/20 p-4"
                   aria-live="polite"
@@ -119,7 +139,7 @@ export default function CreativeHubConversation({
                       <Button type="button" size="sm" disabled={actionDisabled}>发送</Button>
                     </ComposerPrimitive.Send>
                     <ComposerPrimitive.Cancel asChild>
-                      <Button type="button" size="sm" variant="outline">停止</Button>
+                      <Button type="button" size="sm" variant="outline">停止接收</Button>
                     </ComposerPrimitive.Cancel>
                   </div>
                 </ComposerPrimitive.Root>

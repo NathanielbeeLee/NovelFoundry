@@ -93,3 +93,26 @@ JSON repair allowance of one call. It does not mean that the book's token
 budget is exhausted. The director's token-budget service enforces the latter
 at chapter boundaries. Keep these decisions separate from quality debt and
 explicit replanning.
+
+## Prepared identities
+
+Use `prepareStructuredPromptExecution` and `runPreparedStructuredPrompt` when
+cache reuse must bind the actual call. Preparation finishes context selection,
+slot overlays, rendering, output hints, and supported advanced templates, then
+resolves a model plan. Execution consumes the same messages, schema, inputs,
+context, and model snapshots. Semantic retries and JSON repair keep that model
+plan; they do not load changed provider or prompt settings mid-call.
+
+The identity covers the prompt version, schema shape, context policy, effective
+messages and model behavior, including optional fallback and repair paths.
+Function semantics such as schema preprocessing and result normalization need
+an explicit version owned by the result consumer. An unrepresentable schema or
+unresolved optional model path disables reuse while preserving execution.
+Preparing an invalid optional fallback must not block a healthy primary.
+
+Only opaque identity digests may be persisted with a result. Prepared plans
+contain credentials in memory and must never enter checkpoint metadata or logs.
+Preparation is a configuration/read step; live-call telemetry and success
+records belong to actual execution. Supported template scope remains controlled
+by Prompt Workbench; a shared preparation API does not enable templates for
+every prompt family.

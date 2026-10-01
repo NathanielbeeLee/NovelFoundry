@@ -282,5 +282,10 @@ are retained in [NOTICE](NOTICE).
   endpoints as well as the Kimi preset.
 - Chapter writing, review, and repair retain book constraints, protected
   secrets, and edit boundaries when reference context needs shortening.
+- Chapter acceptance reviews use the current story context and model settings
+  when reusing a result. An unavailable review remains eligible for a later try.
+- Creative Hub distinguishes a saved reply, an approval request, a failed task,
+  and stopped reception. Interrupted replies keep received text and offer a
+  task-state refresh before you continue.
 
-Full history is available in [docs/releases/release-notes.md](docs/releases/release-notes.md).
+[Full update history](docs/releases/release-notes.md).

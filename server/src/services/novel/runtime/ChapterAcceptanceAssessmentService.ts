@@ -5,14 +5,12 @@ import type {
 } from "@novelfoundry/shared/types/chapterRuntime";
 import type { LLMProvider } from "@novelfoundry/shared/types/llm";
 import { polishPrisma as prisma } from "../../../modules/novel/quality/polishPersistence";
-import { runStructuredPrompt } from "../../../prompting/core/promptRunner";
-import { resolvePromptContextBlocksForAsset } from "../../../prompting/context/promptContextResolution";
-import { buildChapterReviewContextBlocks } from "../../../prompting/prompts/novel/chapterLayeredContext";
+import { runPreparedStructuredPrompt, runStructuredPrompt } from "../../../prompting/core/promptRunner";
 import { resolveTargetWordRange } from "../../../prompting/prompts/novel/chapterLayeredContextShared";
 import {
-  chapterAcceptanceAssessmentPrompt,
   type ChapterAcceptanceAssessmentOutput,
 } from "../../../prompting/prompts/novel/chapterAcceptance.prompts";
+import { buildAcceptancePromptRequest, prepareChapterAcceptance, type PreparedChapterAcceptance } from "./acceptance";
 import { openConflictService } from "../../state/OpenConflictService";
 import { normalizeScore, ruleScore } from "../novelP0Utils";
 import { detectProseQuality } from "./proseQuality/ProseQualityDetector";
@@ -38,6 +36,9 @@ export interface ChapterAcceptanceAssessmentResult {
   issues: ReviewIssue[];
   auditReports: AuditReport[];
 }
+
+export type AcceptanceAssessmentService = Pick<ChapterAcceptanceAssessmentService, "assess">
+  & Partial<Pick<ChapterAcceptanceAssessmentService, "prepare">>;
 
 type AcceptanceIssue = ChapterAcceptanceAssessmentOutput["blockingIssues"][number];
 type AcceptanceRepairDirective = ChapterAcceptanceAssessmentOutput["repairDirectives"][number];
@@ -239,8 +240,15 @@ function buildFallbackAssessment(content: string): ChapterAcceptanceAssessmentOu
 }
 
 export class ChapterAcceptanceAssessmentService {
-  async assess(input: ChapterAcceptanceAssessmentInput): Promise<ChapterAcceptanceAssessmentResult> {
-    const assessment = await this.invokeAssessment(input).catch((error: unknown) => {
+  prepare(input: ChapterAcceptanceAssessmentInput): Promise<PreparedChapterAcceptance> {
+    return prepareChapterAcceptance(input);
+  }
+
+  async assess(input: ChapterAcceptanceAssessmentInput, prepared?: PreparedChapterAcceptance): Promise<ChapterAcceptanceAssessmentResult> {
+    const invocation = prepared
+      ? runPreparedStructuredPrompt(prepared.prompt).then((result) => result.output)
+      : this.invokeAssessment(input);
+    const assessment = await invocation.catch((error: unknown) => {
       if (!isRecoverableChapterAiFailure(error)) {
         throw error;
       }
@@ -283,42 +291,7 @@ export class ChapterAcceptanceAssessmentService {
   }
 
   private async invokeAssessment(input: ChapterAcceptanceAssessmentInput): Promise<ChapterAcceptanceAssessmentOutput> {
-    const fallbackBlocks = input.contextPackage.chapterReviewContext
-      ? buildChapterReviewContextBlocks(input.contextPackage.chapterReviewContext)
-      : [];
-    const resolvedContext = await resolvePromptContextBlocksForAsset({
-      asset: chapterAcceptanceAssessmentPrompt,
-      executionContext: {
-        entrypoint: "chapter_pipeline",
-        novelId: input.novelId,
-        chapterId: input.chapterId,
-        metadata: {
-          chapterReviewContext: input.contextPackage.chapterReviewContext,
-        },
-      },
-      fallbackBlocks,
-    });
-    const result = await runStructuredPrompt({
-      asset: chapterAcceptanceAssessmentPrompt,
-      promptInput: {
-        novelTitle: input.novelTitle,
-        chapterOrder: input.chapterOrder,
-        chapterTitle: input.chapterTitle,
-        targetWordCount: input.targetWordCount ?? null,
-        content: input.content,
-      },
-      contextBlocks: resolvedContext.blocks,
-      options: {
-        provider: input.provider,
-        model: input.model,
-        temperature: Math.min(input.temperature ?? 0.2, 0.35),
-        maxTokens: 1600,
-        novelId: input.novelId,
-        chapterId: input.chapterId,
-        stage: "chapter_acceptance",
-        triggerReason: "chapter_acceptance_assessment",
-      },
-    });
+    const result = await runStructuredPrompt(await buildAcceptancePromptRequest(input));
     return result.output;
   }
 

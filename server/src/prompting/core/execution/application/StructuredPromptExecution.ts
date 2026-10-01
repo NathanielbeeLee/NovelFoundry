@@ -1,6 +1,6 @@
 import { type BaseMessage, type BaseMessageChunk } from "@langchain/core/messages";
 import { getResolvedLLMClientOptionsFromInstance } from "../../../../llm/factory";
-import { parseStructuredLlmRawContentDetailed, type StructuredInvokeResult } from "../../../../llm/structuredInvoke";
+import { parseStructuredLlmRawContentDetailed, type StructuredInvokeResult, type PreparedStructuredInvocation } from "../../../../llm/structuredInvoke";
 import { buildStructuredResponseFormat, resolveStructuredOutputProfile, selectStructuredOutputStrategy } from "../../../../llm/structuredOutput";
 import { logMemoryUsage } from "../../../../runtime/memoryTelemetry";
 import { beginLlmLiveSession, formatLivePrompt } from "../../../../platform/llm/live/llmLiveSession";
@@ -10,6 +10,7 @@ import { recordPromptQualityEvent } from "../../promptQualityTelemetry";
 import { appendStructuredOutputHintMessages } from "../../structuredOutputHint";
 import type { PromptAsset, PromptExecutionOptions, PromptInvocationMeta, PromptRenderContext, PromptRunResult, PromptStreamRunResult } from "../../promptTypes";
 import { buildPromptInvocationMeta, resolvePromptOverlaysForAsset, preparePromptExecution } from "./PromptPreparation";
+import { renderStructuredPromptExecution, buildStructuredInvocationRequest, type StructuredPromptExecutionInput, type RenderedStructuredPromptExecution, type PreparedStructuredPromptExecution } from "./StructuredPromptPreparation";
 import { resolvePromptMaxTokens, resolveStructuredRepairAttempts, resolveStructuredRepairSourceTokenLimit, resolveStructuredSemanticRetryAttempts, stringifyPromptError, estimateRenderedPromptChars, assertRenderedPromptWithinBudget, markPromptQualityFailure, buildSemanticRetryMessages, applyPromptPostValidate } from "../domain/PromptExecutionPolicy";
 import { promptRunnerLLMFactory, promptRunnerStructuredInvoker } from "../infrastructure/PromptExecutionDependencies";
 import { logPromptEvent, recordPromptFailure, buildPromptRunResult } from "../infrastructure/PromptExecutionTelemetry";
@@ -23,6 +24,7 @@ export async function resolveStructuredOutput<I, O, R = O>(input: {
   outputSchema: NonNullable<PromptAsset<I, O, R>["outputSchema"]>;
   initialResult: StructuredInvokeResult<R>;
   options?: PromptExecutionOptions;
+  preparedInvocation?: PreparedStructuredInvocation;
 }): Promise<{
   output: O;
   invocation: PromptInvocationMeta;
@@ -154,6 +156,7 @@ export async function resolveStructuredOutput<I, O, R = O>(input: {
         taskType: input.asset.taskType,
         messages: currentMessages,
         schema: input.outputSchema,
+        preparedInvocation: input.preparedInvocation,
         maxRepairAttempts: resolveStructuredRepairAttempts(asset),
         maxRepairSourceTokens: resolveStructuredRepairSourceTokenLimit(asset),
         promptMeta: buildPromptInvocationMeta(
@@ -196,42 +199,21 @@ export async function resolveStructuredOutput<I, O, R = O>(input: {
   }
 }
 
-export async function runStructuredPrompt<I, O, R = O>(input: {
-  asset: PromptAsset<I, O, R>;
-  promptInput: I;
-  contextBlocks?: Parameters<typeof selectContextBlocks>[0];
-  options?: PromptExecutionOptions;
-}): Promise<PromptRunResult<O>> {
-  if (input.asset.mode !== "structured" || !input.asset.outputSchema) {
-    throw new Error(`Prompt asset ${input.asset.id}@${input.asset.version} is not a structured prompt.`);
-  }
+export async function runStructuredPrompt<I, O, R = O>(input: StructuredPromptExecutionInput<I, O, R>): Promise<PromptRunResult<O>> {
+  return executeRenderedStructuredPrompt(await renderStructuredPromptExecution(input));
+}
 
-  const outputSchema = input.asset.outputSchema;
-  const overlays = await resolvePromptOverlaysForAsset({
-    asset: input.asset as PromptAsset<unknown, unknown, unknown>,
-    contextBlocks: input.contextBlocks,
-    options: input.options,
-  });
-  const prepared = preparePromptExecution({
-    ...input,
-    contextBlocks: overlays.blocks,
-    resolvedSlots: overlays.resolvedSlots,
-  });
-  const resolvedTemplateMessages = await resolveAdvancedPromptMessages({
-    asset: input.asset,
-    promptInput: input.promptInput,
-    context: prepared.context,
-    officialMessages: prepared.messages,
-    novelId: input.options?.novelId,
-  });
-  const messages = resolvedTemplateMessages === prepared.messages
-    ? prepared.messages
-    : appendStructuredOutputHintMessages({
-    asset: input.asset,
-    promptInput: input.promptInput,
-    context: prepared.context,
-    messages: resolvedTemplateMessages,
-  });
+export async function runPreparedStructuredPrompt<I, O, R = O>(prepared: PreparedStructuredPromptExecution<I, O, R>): Promise<PromptRunResult<O>> {
+  return executeRenderedStructuredPrompt(prepared, prepared.preparedInvocation);
+}
+
+async function executeRenderedStructuredPrompt<I, O, R = O>(
+  input: RenderedStructuredPromptExecution<I, O, R>,
+  preparedInvocation?: PreparedStructuredInvocation,
+): Promise<PromptRunResult<O>> {
+  const prepared = input;
+  const messages = prepared.messages;
+  const outputSchema = input.asset.outputSchema!;
   logPromptEvent({
     event: "started",
     asset: input.asset as PromptAsset<unknown, unknown, unknown>,
@@ -247,21 +229,7 @@ export async function runStructuredPrompt<I, O, R = O>(input: {
       renderedPromptChars,
     );
     const result = await promptRunnerStructuredInvoker<R>({
-      label: `${input.asset.id}@${input.asset.version}`,
-      provider: input.options?.provider,
-      model: input.options?.model,
-      temperature: input.options?.temperature,
-      reasoningEnabled: input.options?.reasoningEnabled,
-      maxTokens: resolvePromptMaxTokens(input.asset as PromptAsset<unknown, unknown, unknown>, input.options),
-      maxTokensCap: input.asset.maxOutputTokens,
-      timeoutMs: input.options?.timeoutMs,
-      signal: input.options?.signal,
-      taskType: input.asset.taskType,
-      messages,
-      schema: outputSchema,
-      maxRepairAttempts: resolveStructuredRepairAttempts(input.asset as PromptAsset<unknown, unknown, unknown>),
-      maxRepairSourceTokens: resolveStructuredRepairSourceTokenLimit(input.asset as PromptAsset<unknown, unknown, unknown>),
-      promptMeta: prepared.invocation,
+      ...buildStructuredInvocationRequest(prepared), preparedInvocation,
     });
     logMemoryUsage({
       event: "structured_invoke_done",
@@ -288,6 +256,7 @@ export async function runStructuredPrompt<I, O, R = O>(input: {
       outputSchema,
       initialResult: result,
       options: input.options,
+      preparedInvocation,
     });
     logMemoryUsage({
       event: "before_prompt_result_return",

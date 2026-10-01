@@ -37,6 +37,7 @@ import {
   findCreativeHubInitialThread,
 } from "./routing/creativeHubRouteBindings";
 import { resolveCreativeHubWorkspacePresentation } from "./presentation/creativeHubWorkspaceViewModel";
+import { createCreativeHubStateRefresh } from "./infrastructure";
 
 const RUNTIME_DETAILS_COLLAPSED_STORAGE_KEY = "creative-hub.runtime-details-collapsed";
 const DEFAULT_THREAD_TITLE = "\u65b0\u5bf9\u8bdd";
@@ -248,12 +249,15 @@ export default function CreativeHubPage() {
     const response = await queryClient.fetchQuery({
       queryKey: queryKeys.creativeHub.state(threadId),
       queryFn: () => getCreativeHubThreadState(threadId),
+      staleTime: 0,
     });
     const state = response.data;
     return {
       messages: (state?.messages ?? []) as unknown as LangChainMessage[],
       interrupts: state?.interrupts ?? [],
       checkpointId: state?.currentCheckpointId ?? null,
+      latestRunId: state?.thread.latestRunId ?? null,
+      threadStatus: state?.thread.status,
       latestTurnSummary: state?.metadata?.latestTurnSummary ?? null,
     };
   }, [queryClient]);
@@ -277,11 +281,7 @@ export default function CreativeHubPage() {
     },
     loadThread,
     getCheckpointId: resolveCheckpointId,
-    onRefreshState: () => {
-      void queryClient.invalidateQueries({ queryKey: queryKeys.creativeHub.threads });
-      void queryClient.invalidateQueries({ queryKey: queryKeys.creativeHub.state(activeThreadId || "none") });
-      void queryClient.invalidateQueries({ queryKey: queryKeys.creativeHub.history(activeThreadId || "none") });
-    },
+    onRefreshState: createCreativeHubStateRefresh(queryClient, activeThreadId),
     diagnostics: stateQuery.data?.data?.diagnostics,
     defaultRuntimeDetailsCollapsed,
   });
@@ -461,6 +461,7 @@ export default function CreativeHubPage() {
   };
 
   const workspaceActionDisabled = !activeThreadId
+    || runtimeState.isRunResultPending
     || runtimeState.isRunning
     || runtimeState.isThreadLoading
     || Boolean(runtimeState.threadLoadError)
@@ -623,6 +624,9 @@ export default function CreativeHubPage() {
             errorMessage={runtimeState.threadLoadError ?? ""}
             onRetry={runtimeState.retryThreadLoad}
             actionDisabled={workspaceActionDisabled}
+            runResultNotice={runtimeState.runResultNotice}
+            onRefreshRunResult={runtimeState.refreshRunResult}
+            refreshingRunResult={runtimeState.isRefreshingRun}
           />
         </div>
 

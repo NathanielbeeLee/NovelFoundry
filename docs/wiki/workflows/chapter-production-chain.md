@@ -43,6 +43,27 @@ Keep the recoverable catch around the model invocation; do not extend it over
 database writes or final artifact synchronization. An unavailable acceptance
 assessment is a warning, while a cancelled assessment writes no fallback report.
 
+## Acceptance reuse
+
+An acceptance result belongs to the exact prepared review, not just the chapter
+text. Changes to the book or chapter title, target length, selected obligations
+and context, prompt contract, effective model defaults, endpoint, protocol,
+reasoning, or supported fallback and repair configuration invalidate reuse.
+The cache key is computed from the same preparation consumed by invocation.
+
+Pending requests share a promise that includes persistent lookup and result
+storage. Completed results have a separate bounded cache; pending work cannot
+be evicted by it. An unavailable assessment is still local quality guidance and
+is never cached as successful AI acceptance, so later review can try again.
+
+Persistent reuse checks the complete digest and result contract. Version 2
+identities are isolated from older checkpoints without deleting chapter data.
+Missing, corrupt, or unverifiable cache records cause a fresh assessment. Cache
+read/write failures do not stop chapter production; audit/data failures retain
+their existing recovery boundary. The owned
+[acceptance module](../../../server/src/services/novel/runtime/acceptance/README.md)
+defines the result-policy revision and custom-assessor contract.
+
 Regression checks use injected AI failures and disposable SQLite schemas.
 They verify retention, retry consumption, debt finalization, and interruption
 boundaries without using a writer's database or a live model provider.

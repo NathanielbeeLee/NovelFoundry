@@ -3,6 +3,7 @@ import type { LLMProvider, ProviderAuthMode } from "@novelfoundry/shared/types/l
 import type { ModelRouteRequestProtocol } from "@novelfoundry/shared/types/novel";
 import type { TaskType } from "./modelRouter";
 import { relaxGeneratedContentSchema } from "./generatedContentSchema";
+import type { ResolvedLLMClientOptions } from "./factory";
 import { repairWithLlm } from "./structuredInvokeRepair";
 import { isLlmInvocationCancelled } from "./streamOutcome";
 import {
@@ -49,6 +50,8 @@ export interface StructuredInvokeRawParseInput<T> {
   maxRepairSourceTokens?: number;
   promptMeta?: PromptInvocationMeta;
   onRepairOutputDelta?: (content: string) => void;
+  preparedRepairClientOptions?: ResolvedLLMClientOptions;
+  preparedRepairError?: unknown;
   strategy: StructuredOutputStrategy;
   profile: StructuredOutputProfile;
   fallbackAvailable?: boolean;

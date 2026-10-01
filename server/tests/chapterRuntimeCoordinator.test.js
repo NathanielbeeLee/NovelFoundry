@@ -2,6 +2,7 @@ const assert = require("node:assert/strict");
 const test = require("node:test");
 const promptRunner = require("../dist/prompting/core/promptRunner.js");
 const { prisma } = require("../dist/db/prisma.js");
+const { StructuredOutputError, resolveStructuredOutputProfile } = require("../dist/llm/structuredOutput.js");
 const { ChapterRuntimeCoordinator } = require("../dist/services/novel/runtime/ChapterRuntimeCoordinator.js");
 const { mergeKnowledgeBoundaryState } = require("../dist/services/novel/runtime/ChapterArtifactDeltaService.js");
 const { directorAutomationLedgerEventService } = require("../dist/services/novel/director/runtime/DirectorAutomationLedgerEventService.js");
@@ -320,6 +321,7 @@ test("finalizeChapterContent runs acceptance gate once and finalizes the current
   const timelineFinalizationCalls = [];
   const coordinator = new ChapterRuntimeCoordinator({
     acceptanceAssessmentService: {
+      prepare: async () => ({ identityDigest: "fixture-prepared-acceptance-v2" }),
       assess: async () => {
         acceptanceCalls += 1;
         gateCalls.push(["acceptance-start", Date.now()]);
@@ -851,7 +853,16 @@ test("createRepairStream does not escalate patch schema failures to a heavy repa
   prisma.novelBible.findUnique = async () => ({ rawContent: "作品圣经" });
   promptRunner.runStructuredPrompt = async () => {
     patchPlanCalls += 1;
-    throw new Error("[{\"origin\":\"string\",\"code\":\"too_small\",\"minimum\":6,\"inclusive\":true,\"path\":[\"patches\",0,\"targetExcerpt\"],\"message\":\"Too small: expected string to have >=6 characters\"}]");
+    throw new StructuredOutputError({
+      message: "Fixture patch output does not satisfy the target excerpt schema",
+      category: "schema_mismatch",
+      diagnostics: {
+        strategy: "prompt_json",
+        profile: resolveStructuredOutputProfile({ provider: "deepseek", model: "deepseek-chat", executionMode: "structured" }),
+        reasoningForcedOff: false, fallbackAvailable: false, fallbackUsed: false,
+        errorCategory: "schema_mismatch",
+      },
+    });
   };
   promptRunner.streamTextPrompt = async () => {
     heavyRepairCalls += 1;

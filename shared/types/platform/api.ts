@@ -27,12 +27,17 @@ export type SSEFrame =
     message?: string;
   };
 
+export type CreativeHubRunTerminal =
+  | { threadId: string; runId: string; checkpointId: string; status: "completed" | "waiting_approval"; message?: string }
+  | { threadId: string; runId: string | null; checkpointId: string | null; status: "failed" | "cancelled"; message?: string };
+
 export type CreativeHubStreamFrame =
   | { event: "messages/partial"; data: CreativeHubMessage[] }
   | { event: "messages/complete"; data: CreativeHubMessage[] }
   | { event: "metadata"; data: Record<string, unknown> }
   | { event: "creative_hub/run_status"; data: { runId?: string; status: string; message?: string } }
   | { event: "creative_hub/turn_summary"; data: CreativeHubTurnSummary }
+  | { event: "creative_hub/run_terminal"; data: CreativeHubRunTerminal }
   | { event: "creative_hub/tool_call"; data: { runId?: string; stepId?: string; toolName: string; inputSummary: string } }
   | {
     event: "creative_hub/tool_result";

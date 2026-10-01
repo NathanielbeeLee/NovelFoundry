@@ -6,7 +6,7 @@ import { plannerService } from "../../planner/PlannerService";
 import { ChapterWritingGraph } from "../chapterWritingGraph";
 import { ChapterArtifactSyncService } from "./ChapterArtifactSyncService";
 import { GenerationContextAssembler } from "./GenerationContextAssembler";
-import { ChapterAcceptanceAssessmentService } from "./ChapterAcceptanceAssessmentService";
+import { ChapterAcceptanceAssessmentService, type AcceptanceAssessmentService } from "./ChapterAcceptanceAssessmentService";
 import { ChapterRuntimeReadinessService } from "./ChapterRuntimeReadinessService";
 import { chapterRuntimeRequestSchema, type ChapterRuntimeRequestInput } from "./chapterRuntimeSchema";
 import type {
@@ -39,7 +39,7 @@ interface ChapterRuntimeCoordinatorDeps {
   artifactSyncService?: Pick<ChapterArtifactSyncService, "saveDraftAndArtifacts" | "syncChapterArtifacts">;
   auditService?: Pick<typeof auditService, "auditChapter">;
   plannerService?: Pick<typeof plannerService, "buildReplanRecommendation" | "shouldTriggerReplanFromAudit">;
-  acceptanceAssessmentService?: Pick<ChapterAcceptanceAssessmentService, "assess">;
+  acceptanceAssessmentService?: AcceptanceAssessmentService;
   readinessService?: Pick<ChapterRuntimeReadinessService, "assertReady">;
   agentRuntime?: ChapterRuntimeAgentPort;
   ensureNovelCharacters?: (novelId: string, actionName: string, minCount?: number) => Promise<void>;

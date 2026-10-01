@@ -17,6 +17,7 @@ import type {
   CreativeHubInterrupt,
   CreativeHubMessage,
   CreativeHubResourceBinding,
+  CreativeHubThreadStatus,
   CreativeHubTurnSummary,
 } from "@novelfoundry/shared/types/creativeHub";
 import type { CreativeHubStreamFrame } from "@novelfoundry/shared/types/api";
@@ -29,6 +30,7 @@ import {
   type CreativeHubRunArtifacts,
   mergeDisplayMessages,
 } from "../lib/creativeHubSyntheticMessages";
+import { CreativeHubStreamSession, type CreativeHubStateRefreshResult } from "../runtime";
 
 type RunSettings = {
   provider: string;
@@ -41,6 +43,8 @@ interface LoadThreadResult {
   messages: LangChainMessage[];
   interrupts?: CreativeHubInterrupt[];
   checkpointId?: string | null;
+  latestRunId?: string | null;
+  threadStatus?: CreativeHubThreadStatus;
   latestTurnSummary?: import("@novelfoundry/shared/types/creativeHub").CreativeHubTurnSummary | null;
 }
 
@@ -52,7 +56,7 @@ interface UseCreativeHubRuntimeOptions {
   getCheckpointId?: (threadId: string, parentMessages: LangChainMessage[]) => Promise<string | null>;
   onEvent?: (event: CreativeHubStreamFrame) => void;
   onCheckpointChange?: (checkpointId: string | null) => void;
-  onRefreshState?: () => void;
+  onRefreshState?: (runId: string | null) => Promise<CreativeHubStateRefreshResult>;
   diagnostics?: FailureDiagnostic;
   defaultRuntimeDetailsCollapsed: boolean;
 }
@@ -117,9 +121,11 @@ function normalizeStreamFrame(frame: CreativeHubStreamFrame) {
       data: frame.data as unknown as LangChainMessage[],
     };
   }
-  if (frame.event === "creative_hub/error") {
+  if (frame.event === "creative_hub/error" || frame.event === "error") {
     return {
-      event: "error" as const,
+      // The library's generic error event marks the last AI message, which may
+      // belong to a previous turn. This run owns its notice and reconciliation.
+      event: "creative_hub/error" as const,
       data: frame.data,
     };
   }
@@ -161,6 +167,10 @@ export function useCreativeHubRuntime({
   const currentRunIdRef = useRef<string | null>(null);
   const debugEntrySeqRef = useRef(0);
   const sendInFlightRef = useRef(false);
+  const activeStreamRef = useRef<CreativeHubStreamSession | null>(null);
+  const refreshInFlightRef = useRef(false);
+  const [runProblem, setRunProblem] = useState<{ threadId: string; sessionId: number; message: string; blocked: boolean } | null>(null);
+  const [isRefreshingRun, setIsRefreshingRun] = useState(false);
   const [isRunning, setIsRunning] = useState(false);
   const [runArtifacts, setRunArtifacts] = useState<CreativeHubRunArtifacts[]>([]);
   const [loadedThreadId, setLoadedThreadId] = useState("");
@@ -175,9 +185,7 @@ export function useCreativeHubRuntime({
     ? threadLoadFailure.message
     : null;
 
-  useEffect(() => {
-    latestThreadIdRef.current = threadId;
-  }, [threadId]);
+  latestThreadIdRef.current = threadId;
 
   const updateRunArtifacts = (
     runId: string,
@@ -202,6 +210,9 @@ export function useCreativeHubRuntime({
         }
         const streamSessionId = streamSessionRef.current;
         const streamThreadId = threadId;
+        const session = activeStreamRef.current;
+        if (!session?.isCurrent(streamSessionId, streamThreadId)) return;
+        session.observeMessages(messages);
         const streamGenerator = streamCreativeHubRun(
           threadId,
           {
@@ -216,39 +227,47 @@ export function useCreativeHubRuntime({
           config.abortSignal,
         );
 
-        for await (const frame of streamGenerator) {
-          if (streamSessionId !== streamSessionRef.current || streamThreadId !== latestThreadIdRef.current) {
-            break;
+        try {
+          for await (const frame of streamGenerator) {
+            if (streamSessionId !== streamSessionRef.current || streamThreadId !== latestThreadIdRef.current) {
+              break;
+            }
+            if (!session.accept(frame, streamSessionRef.current, latestThreadIdRef.current)) break;
+            if (frame.event === "creative_hub/run_status" && frame.data.runId) {
+              currentRunIdRef.current = frame.data.runId;
+            }
+            if (frame.event === "creative_hub/turn_summary") {
+              currentRunIdRef.current = frame.data.runId;
+              updateRunArtifacts(frame.data.runId, (existing) => ({
+                runId: frame.data.runId,
+                debugEntries: existing?.debugEntries ?? [],
+                turnSummary: frame.data,
+              }));
+            }
+            const runArtifactEvent = createRunArtifactEvent(frame, currentRunIdRef.current, debugEntrySeqRef.current + 1);
+            if (runArtifactEvent) {
+              debugEntrySeqRef.current += 1;
+              updateRunArtifacts(runArtifactEvent.runId, (existing) => ({
+                runId: runArtifactEvent.runId,
+                turnSummary: existing?.turnSummary,
+                debugEntries: [...(existing?.debugEntries ?? []), runArtifactEvent.entry].slice(-16),
+              }));
+            }
+            onEvent?.(frame);
+            if (frame.event === "metadata" && typeof frame.data === "object" && frame.data && "checkpointId" in frame.data) {
+              const nextCheckpointId = typeof frame.data.checkpointId === "string"
+                ? frame.data.checkpointId
+                : null;
+              checkpointRef.current = nextCheckpointId;
+              onCheckpointChange?.(nextCheckpointId);
+            }
+            yield normalizeStreamFrame(frame);
           }
-          if (frame.event === "creative_hub/run_status" && frame.data.runId) {
-            currentRunIdRef.current = frame.data.runId;
-          }
-          if (frame.event === "creative_hub/turn_summary") {
-            currentRunIdRef.current = frame.data.runId;
-            updateRunArtifacts(frame.data.runId, (existing) => ({
-              runId: frame.data.runId,
-              debugEntries: existing?.debugEntries ?? [],
-              turnSummary: frame.data,
-            }));
-          }
-          const runArtifactEvent = createRunArtifactEvent(frame, currentRunIdRef.current, debugEntrySeqRef.current + 1);
-          if (runArtifactEvent) {
-            debugEntrySeqRef.current += 1;
-            updateRunArtifacts(runArtifactEvent.runId, (existing) => ({
-              runId: runArtifactEvent.runId,
-              turnSummary: existing?.turnSummary,
-              debugEntries: [...(existing?.debugEntries ?? []), runArtifactEvent.entry].slice(-16),
-            }));
-          }
-          onEvent?.(frame);
-          if (frame.event === "metadata" && typeof frame.data === "object" && frame.data && "checkpointId" in frame.data) {
-            const nextCheckpointId = typeof frame.data.checkpointId === "string"
-              ? frame.data.checkpointId
-              : null;
-            checkpointRef.current = nextCheckpointId;
-            onCheckpointChange?.(nextCheckpointId);
-          }
-          yield normalizeStreamFrame(frame);
+        } catch (error) {
+          session.fail(error);
+          throw error;
+        } finally {
+          session.finish();
         }
       },
     [isThreadReady, onCheckpointChange, onEvent, resourceBindings, runSettings.maxTokens, runSettings.model, runSettings.provider, runSettings.temperature, threadId],
@@ -299,6 +318,48 @@ export function useCreativeHubRuntime({
     () => (isCurrentThreadLoaded ? runArtifacts : []),
     [isCurrentThreadLoaded, runArtifacts],
   );
+  const currentRunProblem = runProblem?.threadId === threadId && runProblem.sessionId === streamSessionRef.current ? runProblem : null;
+
+  const refreshRunResult = async (session = activeStreamRef.current) => {
+    if (!session?.isCurrent(streamSessionRef.current, latestThreadIdRef.current) || refreshInFlightRef.current) return;
+    refreshInFlightRef.current = true;
+    setIsRefreshingRun(true);
+    try {
+      if (!onRefreshState) throw new Error("请刷新当前任务状态后再继续。");
+      const refreshed = await onRefreshState(session.runId);
+      const state = await loadThread(session.threadId);
+      if (!session.isCurrent(streamSessionRef.current, latestThreadIdRef.current)) return;
+      const result = session.reconcile(state, refreshed);
+      setMessages(result.messages);
+      checkpointRef.current = state.checkpointId ?? null;
+      onCheckpointChange?.(state.checkpointId ?? null);
+      setInterrupt(toLangGraphInterrupt(state.interrupts?.[0] ?? null));
+      if (state.latestTurnSummary?.runId === session.runId) {
+        updateRunArtifacts(state.latestTurnSummary.runId, (existing) => ({
+          runId: state.latestTurnSummary!.runId,
+          turnSummary: state.latestTurnSummary!,
+          debugEntries: existing?.debugEntries ?? [],
+        }));
+      }
+      setRunProblem(result.outcome.status === "completed" || result.outcome.status === "waiting_approval" ? null : {
+        threadId: session.threadId, sessionId: session.sessionId, message: result.outcome.message, blocked: result.blocked,
+      });
+    } catch {
+      if (!session.isCurrent(streamSessionRef.current, latestThreadIdRef.current)) return;
+      const outcome = session.finish();
+      setRunProblem({
+        threadId: session.threadId, sessionId: session.sessionId, blocked: true,
+        message: outcome.status === "completed" || outcome.status === "waiting_approval"
+          ? "本轮回复已保存，任务状态读取失败。请刷新任务状态。"
+          : `${outcome.message} 任务状态读取失败，请再次刷新。`,
+      });
+    } finally {
+      if (session.isCurrent(streamSessionRef.current, latestThreadIdRef.current)) {
+        refreshInFlightRef.current = false;
+        setIsRefreshingRun(false);
+      }
+    }
+  };
 
   const inlineStateMessages = useMemo(
     () => buildInlineStateMessages(currentInterrupt?.value as CreativeHubInterrupt | undefined, diagnostics),
@@ -328,16 +389,19 @@ export function useCreativeHubRuntime({
   threadMessagesRef.current = baseThreadMessages;
 
   const handleSend = async (nextMessages: LangChainMessage[], config: { checkpointId?: string | null; runConfig?: unknown }) => {
-    if (sendInFlightRef.current || !isCurrentThreadLoaded) {
+    if (sendInFlightRef.current || !isCurrentThreadLoaded || currentRunProblem?.blocked) {
       return;
     }
-    const sendSessionId = streamSessionRef.current;
+    const sendSessionId = ++streamSessionRef.current;
     const sendThreadId = threadId;
     if (sendThreadId !== latestThreadIdRef.current) {
       return;
     }
+    const session = new CreativeHubStreamSession(sendThreadId, sendSessionId, checkpointRef.current, currentMessages);
+    activeStreamRef.current = session;
     try {
       sendInFlightRef.current = true;
+      setRunProblem(null);
       setRunArtifacts([]);
       currentRunIdRef.current = null;
       debugEntrySeqRef.current = 0;
@@ -346,11 +410,20 @@ export function useCreativeHubRuntime({
         ...(config.checkpointId ? { checkpointId: config.checkpointId } : {}),
         ...(config.runConfig ? { runConfig: config.runConfig } : {}),
       });
+    } catch (error) {
+      session.fail(error);
     } finally {
       if (sendSessionId === streamSessionRef.current && sendThreadId === latestThreadIdRef.current) {
+        const outcome = session.finish();
+        if (outcome.status === "completed" || outcome.status === "waiting_approval") {
+          try { await onRefreshState?.(session.runId); } catch { /* A read failure cannot undo a saved terminal. */ }
+        } else {
+          setRunProblem({ threadId: sendThreadId, sessionId: sendSessionId, message: outcome.message, blocked: true });
+          await refreshRunResult(session);
+        }
+        if (!session.isCurrent(streamSessionRef.current, latestThreadIdRef.current)) return;
         sendInFlightRef.current = false;
         setIsRunning(false);
-        onRefreshState?.();
       }
     }
   };
@@ -383,6 +456,7 @@ export function useCreativeHubRuntime({
     },
     onEdit: getCheckpointId
       ? async (msg) => {
+        if (sendInFlightRef.current || currentRunProblem) return;
         const branchSessionId = streamSessionRef.current;
         const truncated = truncateLangChainMessages(threadMessagesRef.current, msg.parentId);
         const checkpointId = await requireCheckpointIdForBranch(threadId, truncated, getCheckpointId);
@@ -406,6 +480,7 @@ export function useCreativeHubRuntime({
       : undefined,
     onReload: getCheckpointId
       ? async (parentId, config) => {
+        if (sendInFlightRef.current || currentRunProblem) return;
         const branchSessionId = streamSessionRef.current;
         const truncated = truncateLangChainMessages(threadMessagesRef.current, parentId);
         const checkpointId = await requireCheckpointIdForBranch(threadId, truncated, getCheckpointId);
@@ -424,13 +499,23 @@ export function useCreativeHubRuntime({
       : undefined,
     onCancel: async () => {
       cancel();
-      sendInFlightRef.current = false;
+      const session = activeStreamRef.current;
+      if (session?.isCurrent(streamSessionRef.current, latestThreadIdRef.current)) {
+        const error = new Error("Reply reception cancelled");
+        error.name = "AbortError";
+        session.fail(error);
+        const outcome = session.finish();
+        if (outcome.status !== "completed" && outcome.status !== "waiting_approval") {
+          setRunProblem({ threadId: session.threadId, sessionId: session.sessionId, message: outcome.message, blocked: true });
+        }
+      }
       setIsRunning(false);
     },
     extras: {
       creativeHub: true,
       interrupt: currentInterrupt,
       messageMetadata,
+      runOutcome: activeStreamRef.current?.outcome,
     },
   });
 
@@ -439,12 +524,16 @@ export function useCreativeHubRuntime({
       streamSessionRef.current += 1;
       cancel();
       sendInFlightRef.current = false;
+      refreshInFlightRef.current = false;
+      activeStreamRef.current = null;
       setIsRunning(false);
     };
   }, [threadId, cancel]);
 
   useEffect(() => {
     let disposed = false;
+    setRunProblem(null);
+    setIsRefreshingRun(false);
     if (!isThreadReady) {
       checkpointRef.current = null;
       setMessages([]);
@@ -516,6 +605,10 @@ export function useCreativeHubRuntime({
     setInterrupt,
     messages: currentMessages,
     sendPrompt,
+    runResultNotice: currentRunProblem?.message ?? null,
+    isRunResultPending: Boolean(currentRunProblem?.blocked || sendInFlightRef.current && !isRunning),
+    isRefreshingRun,
+    refreshRunResult: () => { void refreshRunResult(); },
     latestTurnSummary: isCurrentThreadLoaded
       ? (currentRunArtifacts[currentRunArtifacts.length - 1]?.turnSummary ?? null) as CreativeHubTurnSummary | null
       : undefined,

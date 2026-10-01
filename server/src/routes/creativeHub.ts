@@ -15,6 +15,7 @@ import {
 import { authMiddleware } from "../middleware/auth";
 import { validate } from "../middleware/validate";
 import { creativeHubService } from "../creativeHub/CreativeHubService";
+import { createCreativeHubTerminalFrame } from "../creativeHub/http";
 
 const router = Router();
 
@@ -75,7 +76,7 @@ const resolveInterruptSchema = z.object({
 router.use(authMiddleware);
 
 function writeCreativeHubFrame(res: Response, frame: CreativeHubStreamFrame): void {
-  if (res.writableEnded) return;
+  if (res.writableEnded || res.destroyed) return;
   res.write(`data: ${JSON.stringify(frame)}\n\n`);
 }
 
@@ -259,14 +260,16 @@ router.post("/threads/:threadId/runs/stream", validate({
   try {
     const { threadId } = req.params as { threadId: string };
     const body = req.body as z.infer<typeof streamRunSchema>;
-    const disposeHeartbeat = initCreativeHubSSE(res);
     const threadState = await creativeHubService.getThreadState(threadId);
     const parentCheckpointId = body.checkpointId ?? threadState.currentCheckpointId ?? null;
     const resourceBindings = toBindings(body.resourceBindings);
     const seedMessages = await buildSeedMessages(threadId, parentCheckpointId, body.messages);
 
+    const disposeHeartbeat = initCreativeHubSSE(res);
+    res.once("close", disposeHeartbeat);
+
     try {
-      await creativeHubLangGraph.runThread({
+      const result = await creativeHubLangGraph.runThread({
         threadId,
         messages: seedMessages,
         resourceBindings,
@@ -280,6 +283,7 @@ router.post("/threads/:threadId/runs/stream", validate({
       }, (frame) => {
         writeCreativeHubFrame(res, frame);
       });
+      writeCreativeHubFrame(res, createCreativeHubTerminalFrame(threadId, result));
     } catch (error) {
       writeCreativeHubFrame(res, {
         event: "creative_hub/error",
@@ -287,7 +291,8 @@ router.post("/threads/:threadId/runs/stream", validate({
       });
     } finally {
       disposeHeartbeat();
-      if (!res.writableEnded) {
+      res.off("close", disposeHeartbeat);
+      if (!res.writableEnded && !res.destroyed) {
         res.end();
       }
     }
