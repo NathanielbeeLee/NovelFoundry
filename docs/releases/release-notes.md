@@ -6,6 +6,12 @@ below; their source evidence is retained in local maintainer archives.
 
 ## History
 
+### 2026-10-01
+
+- Prompt Workbench lists comic visual-fact extraction so you can inspect the
+  instructions that help keep characters, places, props, and states consistent
+  across episodes.
+
 ### 2026-09-30
 
 - NovelFoundry's source is available in its own public repository, with
