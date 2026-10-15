@@ -1,3 +1,4 @@
+import { CommandLeaseLostError, runWithCommandAuthority } from "../services/novel/director/commands/leases";
 import "dotenv/config";
 import { ensureRuntimeDatabaseReady } from "../db/runtimeMigrations";
 import { loadProviderApiKeys } from "../llm/factory";
@@ -75,24 +76,25 @@ export class DirectorWorker {
     if (!leased) return false;
 
     const { command } = leased;
-    const stopRenewal = this.queue.startLeaseRenewal(command.id, slotId);
+    const { authority, stop: stopRenewal } = this.queue.startLeaseRenewal(command, slotId);
 
     try {
-      await this.queue.acquireResourceGate(command.novelId, command.commandType);
+      await this.queue.acquireResourceGate(command.novelId, command.commandType, authority.signal);
       try {
-        await this.queue.markRunning(command.id, slotId);
+        await this.queue.markRunning(command.id, slotId, authority);
 
         console.log(
           `[director.worker] executing commandId=${command.id} type=${command.commandType} taskId=${command.taskId} novelId=${command.novelId} slot=${slotId}`,
         );
 
-        const outcome = await this.commandExecutor.execute(command.id);
+        const outcome = await authority.wait(runWithCommandAuthority(authority, () => this.commandExecutor.execute(command.id, authority)));
+        authority.assertLive();
 
         if (outcome === "cancelled") {
-          await this.queue.cancelTask(command.id, slotId);
+          await this.queue.cancelTask(command.id, slotId, authority);
           console.log(`[director.worker] cancelled commandId=${command.id}`);
         } else {
-          await this.queue.completeTask(command.id, slotId);
+          await this.queue.completeTask(command.id, slotId, authority);
           console.log(`[director.worker] completed commandId=${command.id}`);
         }
       } finally {
@@ -100,7 +102,12 @@ export class DirectorWorker {
       }
     } catch (error) {
       console.error(`[director.worker] command failed commandId=${command.id}`, error);
-      await this.queue.failTask(command.id, slotId, error);
+      if (!authority.signal.aborted && !(error instanceof CommandLeaseLostError)) {
+        try { await this.queue.failTask(command.id, slotId, error, authority); }
+        catch (failureError) {
+          if (!(failureError instanceof CommandLeaseLostError)) throw failureError;
+        }
+      }
     } finally {
       stopRenewal();
     }

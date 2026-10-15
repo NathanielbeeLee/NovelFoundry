@@ -105,6 +105,9 @@ const groups = {
     "NovelFactEntry"
   ],
   "knowledge": [
+    "KnowledgeResearchAdoption",
+    "KnowledgeResearchFinding",
+    "KnowledgeResearchSource",
     "KnowledgeDocument",
     "KnowledgeDocumentVersion",
     "DocumentChapter",

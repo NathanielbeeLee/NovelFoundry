@@ -19,6 +19,7 @@ interface ChapterEditorDirectorPanelProps {
   currentTargetDescription: string;
   isGenerating: boolean;
   isApplying: boolean;
+  applyBlocked?: boolean;
   onInstructionChange: (next: string) => void;
   onScopeChange: (scope: ChapterEditorRevisionScope) => void;
   onRunRecommended: () => void;
@@ -50,6 +51,7 @@ export default function ChapterEditorDirectorPanel(props: ChapterEditorDirectorP
     currentTargetDescription,
     isGenerating,
     isApplying,
+    applyBlocked,
     onInstructionChange,
     onScopeChange,
     onRunRecommended,
@@ -289,13 +291,13 @@ export default function ChapterEditorDirectorPanel(props: ChapterEditorDirectorP
       </div>
 
       <div className="shrink-0 flex flex-wrap items-center justify-end gap-2 border-t border-border/70 px-4 py-4">
-        <Button size="sm" variant="outline" onClick={onReject} disabled={isIdle || session.status === "loading" || isApplying}>
+        <Button size="sm" variant="outline" onClick={onReject} disabled={isIdle || session.status === "loading" || isApplying || applyBlocked}>
           拒绝全部
         </Button>
-        <Button size="sm" variant="outline" onClick={onRegenerate} disabled={isIdle || session.status === "loading" || isApplying}>
+        <Button size="sm" variant="outline" onClick={onRegenerate} disabled={isIdle || session.status === "loading" || isApplying || applyBlocked}>
           再生成
         </Button>
-        <Button size="sm" onClick={onAccept} disabled={session.status !== "ready" || !activeCandidate || isApplying}>
+        <Button size="sm" onClick={onAccept} disabled={session.status !== "ready" || !activeCandidate || isApplying || applyBlocked}>
           {isApplying ? "应用中..." : "接受全部"}
         </Button>
       </div>

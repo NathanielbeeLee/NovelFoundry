@@ -25,7 +25,8 @@ import {
 import { getLLMSelectionSettings } from "../../services/settings/LLMSelectionSettingsService";
 import { getRagEmbeddingSettings } from "../../services/settings/RagSettingsService";
 import { getRagRuntimeSettings } from "../../services/settings/RagRuntimeSettingsService";
-import { secretStore } from "../../services/settings/secretStore";
+import { secretStore, type SecretStoreRecord } from "../../services/settings/secretStore";
+import { beginProviderDiscovery, deleteProviderDiscovery, resolveProviderDiscovery } from "../../services/settings/providers";
 
 const MAX_PROVIDER_CONCURRENCY_LIMIT = 100;
 const MAX_PROVIDER_REQUEST_INTERVAL_MS = 3_600_000;
@@ -56,21 +57,7 @@ const customProviderModelsSchema = z.object({
   requestProtocol: z.enum(MODEL_ROUTE_REQUEST_PROTOCOLS).optional(),
 });
 
-type APIKeyRecordLike = {
-  provider: string;
-  displayName: string | null;
-  key: string | null;
-  model: string | null;
-  baseURL: string | null;
-  authMode: string;
-  requestProtocol?: string | null;
-  isActive: boolean;
-  reasoningEnabled?: boolean | null;
-  reasoningEffort?: string | null;
-  hiddenModels?: string | null;
-  concurrencyLimit?: number | null;
-  requestIntervalMs?: number | null;
-};
+type APIKeyRecordLike = SecretStoreRecord;
 
 function normalizeOptionalText(value: string | null | undefined): string | undefined {
   if (typeof value !== "string") {
@@ -168,10 +155,13 @@ export function registerCustomProviderRoutes(router: Router): void {
         let model = normalizeOptionalText(body.model);
         let models = getFallbackModels(model);
         let message = "自定义厂商已创建。";
+        let discoveredModels: string[] | undefined;
+        const requestStartedAt = beginProviderDiscovery();
 
         try {
           const refreshResult = await refreshProviderModelsWithFallback(provider, apiKey, baseURL, getFallbackModels(model), authMode);
           models = refreshResult.models;
+          if (refreshResult.catalogAvailable) discoveredModels = models;
           if (!refreshResult.catalogAvailable) message = "自定义厂商已创建；该厂商不提供模型列表接口，已使用手动填写的模型。";
           model = model ?? models[0];
         } catch (error) {
@@ -196,6 +186,8 @@ export function registerCustomProviderRoutes(router: Router): void {
           concurrencyLimit: body.concurrencyLimit ?? 0,
           requestIntervalMs: body.requestIntervalMs ?? 0,
         }) as APIKeyRecordLike;
+        const discovery = await resolveProviderDiscovery(data, requestStartedAt, discoveredModels);
+        models = Array.from(new Set([...(discovery?.models ?? []), data.model ?? ""].filter(Boolean)));
         setProviderSecretCache(provider, data.isActive ? {
           displayName: data.displayName ?? undefined,
           key: data.key ?? undefined,
@@ -232,6 +224,7 @@ export function registerCustomProviderRoutes(router: Router): void {
             concurrencyLimit: normalizeProviderLimit(data.concurrencyLimit),
             requestIntervalMs: normalizeProviderLimit(data.requestIntervalMs),
             models,
+            modelsDiscoveredAt: discovery?.discoveredAt ?? null,
             imageModels,
             supportsImageGeneration: Boolean(imageModel),
           },
@@ -252,6 +245,7 @@ export function registerCustomProviderRoutes(router: Router): void {
           concurrencyLimit: number;
           requestIntervalMs: number;
           models: string[];
+          modelsDiscoveredAt: string | null;
           imageModels: string[];
           supportsImageGeneration: boolean;
         }>);
@@ -290,6 +284,7 @@ export function registerCustomProviderRoutes(router: Router): void {
           throw new AppError("知识库正在使用这个向量服务，请先切换向量服务或暂停资料检索。", 400);
         }
         await secretStore.deleteProvider(provider);
+        await deleteProviderDiscovery(existing);
         await saveProviderImageModel(provider, null);
         setProviderSecretCache(provider, null);
         evictSharedLimiters(provider);

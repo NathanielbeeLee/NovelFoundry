@@ -9,6 +9,8 @@ export interface PromptAssetLoaderEntry {
 }
 
 export const promptAssetLoaderEntries: PromptAssetLoaderEntry[] = [
+  { key: "knowledge.research.extract@v1", load: () => require("../prompts/knowledge/research/prompts").researchExtractPrompt as UnknownPromptAsset },
+  { key: "audit.chapter.manual_evidence@v1", load: () => require("../prompts/audit/manual/prompts").manualChapterAuditPrompt as UnknownPromptAsset },
   { key: "creation.reference.abstract@v1", load: () => require("../prompts/creation/referenceCreation.prompts").referenceAbstractPrompt as UnknownPromptAsset },
   { key: "creation.reference.brief@v1", load: () => require("../prompts/creation/referenceCreation.prompts").referenceBriefPrompt as UnknownPromptAsset },
   { key: "creation.reference.originality_review@v1", load: () => require("../prompts/creation/referenceCreation.prompts").referenceOriginalityReviewPrompt as UnknownPromptAsset },

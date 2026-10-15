@@ -11,11 +11,25 @@ export interface QualityScore {
   overall: number;
 }
 
+export interface ReviewEvidenceCalibration {
+  verdict: "confirmed" | "hypothesis" | "deferred" | "keep";
+  grounding: "verified" | "missing" | "ambiguous" | "invalid";
+  excerpt: string;
+  startOffset: number | null;
+  endOffset: number | null;
+  readingImpact: string;
+  counterEvidence: string;
+  reason: string;
+  sourceContentHash: string;
+  repairEligible: boolean;
+}
+
 export interface ReviewIssue {
   severity: "low" | "medium" | "high" | "critical";
   category: "coherence" | "repetition" | "pacing" | "voice" | "engagement" | "logic";
   evidence: string;
   fixSuggestion: string;
+  calibration?: ReviewEvidenceCalibration;
 }
 
 export interface ReplanRecommendation {

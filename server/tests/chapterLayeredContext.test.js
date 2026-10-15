@@ -1049,3 +1049,23 @@ test("chapter context only supplies mind and active dialogue guidance to actual 
   assert.doesNotMatch(guidanceBlock.content, /暂时避开冲突/);
   assert.ok(writeContext.characterHardFacts.some((fact) => fact.characterId === "char-1"));
 });
+
+test("adopted research remains protected guidance in writer, review and repair contexts", () => {
+  const contextPackage = createContextPackage();
+  const writeContext = buildChapterWriteContext({ bookContract: contextPackage.bookContract,
+    macroConstraints: contextPackage.macroConstraints, volumeWindow: contextPackage.volumeWindow, contextPackage });
+  writeContext.researchAnchors = [{ findingId: "finding", sourceId: "source", documentVersionId: "version",
+    sourceTitle: "外部资料", sourceUrl: null, author: null, accessedAt: null, reliabilityReason: "未核实",
+    contentHash: "hash", claim: "可用结论", quote: "原文引文", startOffset: 0, endOffset: 4, uncertainty: "适用范围有限" }];
+  const review = buildChapterReviewContext(writeContext, contextPackage);
+  const repair = buildChapterRepairContext({ writeContext, contextPackage, issues: [] });
+  for (const blocks of [buildChapterWriterContextBlocks(writeContext), buildChapterWriterContextBlocks(writeContext, { mode: "incremental" }),
+    buildChapterReviewContextBlocks(review), buildChapterRepairContextBlocks(repair)]) {
+    const block = blocks.find(item => item.id === "research_anchors");
+    assert.ok(block); assert.equal(block.required, true); assert.equal(block.allowSummary, false);
+    assert.match(block.content, /不是小说已发生事实/); assert.match(block.content, /适用范围有限/);
+    assert.match(block.content, /原文引文/); assert.match(block.content, /不可信资料/);
+  }
+  writeContext.researchAnchors = [];
+  assert.equal(buildChapterWriterContextBlocks(writeContext).some(item => item.id === "research_anchors"), false);
+});

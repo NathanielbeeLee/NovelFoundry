@@ -16,9 +16,11 @@ function listen(server) {
 test("GET /api/settings/api-keys exposes image generation metadata for supported providers", async () => {
   const originalFindMany = prisma.aPIKey.findMany;
   const originalAppSettingFindMany = prisma.appSetting.findMany;
+  const originalAppSettingFindUnique = prisma.appSetting.findUnique;
   const originalFetch = global.fetch;
   const originalOpenAIKey = process.env.OPENAI_API_KEY;
 
+  prisma.appSetting.findUnique = async () => null;
   process.env.OPENAI_API_KEY = "test-openai-key";
   prisma.aPIKey.findMany = async () => ([
     {
@@ -87,6 +89,7 @@ test("GET /api/settings/api-keys exposes image generation metadata for supported
   } finally {
     prisma.aPIKey.findMany = originalFindMany;
     prisma.appSetting.findMany = originalAppSettingFindMany;
+    prisma.appSetting.findUnique = originalAppSettingFindUnique;
     global.fetch = originalFetch;
     if (originalOpenAIKey === undefined) {
       delete process.env.OPENAI_API_KEY;
@@ -178,11 +181,20 @@ test("POST /api/settings/custom-providers saves optional image model settings", 
   const originalCreate = prisma.aPIKey.create;
   const originalAppSettingUpsert = prisma.appSetting.upsert;
   const originalFetch = global.fetch;
+  const originalTransaction = prisma.$transaction;
+  const originalAppSettingFindUnique = prisma.appSetting.findUnique;
+  let record = null;
+  const settings = new Map();
+  prisma.$transaction = async (callback) => callback({
+    aPIKey: { findUnique: async () => record }, appSetting: prisma.appSetting, $executeRaw: async () => 1,
+  });
+  prisma.appSetting.findUnique = async ({ where }) => settings.get(where.key) ?? null;
   const httpFetch = originalFetch.bind(global);
   let savedImageModelSetting = null;
 
-  prisma.aPIKey.findUnique = async () => null;
-  prisma.aPIKey.create = async ({ data }) => ({
+  prisma.aPIKey.findUnique = async () => record;
+  prisma.aPIKey.create = async ({ data }) => (record = {
+    ...data,
     id: "api-key-custom-codex",
     provider: data.provider,
     displayName: data.displayName,
@@ -197,7 +209,8 @@ test("POST /api/settings/custom-providers saves optional image model settings", 
     updatedAt: new Date(),
   });
   prisma.appSetting.upsert = async ({ where, create, update }) => {
-    savedImageModelSetting = { where, create, update };
+    settings.set(where.key, { key: where.key, value: update.value });
+    if (where.key.startsWith("provider.imageModel.")) savedImageModelSetting = { where, create, update };
     return {
       id: "app-setting-custom-image-model",
       key: create.key,
@@ -247,6 +260,8 @@ test("POST /api/settings/custom-providers saves optional image model settings", 
     prisma.aPIKey.findUnique = originalFindUnique;
     prisma.aPIKey.create = originalCreate;
     prisma.appSetting.upsert = originalAppSettingUpsert;
+    prisma.appSetting.findUnique = originalAppSettingFindUnique;
+    prisma.$transaction = originalTransaction;
     global.fetch = originalFetch;
     await new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
   }

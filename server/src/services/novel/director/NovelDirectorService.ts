@@ -1,3 +1,4 @@
+import { scheduleExecutionWork } from "../../../platform/db";
 import { buildStyleIntentSummary } from "@novelfoundry/shared/types/styleEngine";
 import { AppError } from "../../../middleware/errorHandler";
 import {
@@ -243,6 +244,7 @@ export class NovelDirectorService {
   }
 
   private scheduleBackgroundRun(taskId: string, runner: () => Promise<void>) {
+    if (scheduleExecutionWork(() => this.runScheduledBackgroundRun(taskId, runner))) return;
     setImmediate(() => {
       void this.runScheduledBackgroundRun(taskId, runner);
     });

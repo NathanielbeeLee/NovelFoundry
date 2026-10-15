@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import type { LLMProvider, ProviderAuthMode } from "@novelfoundry/shared/types/llm";
 import {
   isBuiltInProvider,
@@ -13,6 +14,7 @@ import {
 interface ModelCacheItem {
   models: string[];
   cachedAt: number;
+  requestSequence: number;
 }
 
 interface GetProviderModelsOptions {
@@ -43,6 +45,7 @@ class ModelCatalogHttpError extends Error {
 
 const MODEL_CACHE_TTL_MS = 30 * 60 * 1000;
 const modelCache = new Map<string, ModelCacheItem>();
+let modelRequestSequence = 0;
 
 function uniqueModels(models: string[]): string[] {
   return Array.from(new Set(models.map((item) => item.trim()).filter(Boolean)));
@@ -85,13 +88,13 @@ function getFallbackModels(provider: LLMProvider, options: GetProviderModelsOpti
   ]);
 }
 
-function getCacheKey(provider: LLMProvider, baseURL?: string): string {
+function getCacheKey(provider: LLMProvider, baseURL?: string, apiKey?: string, authMode?: ProviderAuthMode): string {
   const resolvedBaseURL = resolveProviderBaseUrl(provider, baseURL, baseURL) ?? "";
-  return `${provider}::${resolvedBaseURL}`;
+  return createHash("sha256").update(JSON.stringify([provider, resolvedBaseURL, apiKey?.trim() ?? "", authMode ?? "bearer"])).digest("hex");
 }
 
-function getCachedModels(provider: LLMProvider, baseURL?: string): string[] | undefined {
-  const cacheKey = getCacheKey(provider, baseURL);
+function getCachedModels(provider: LLMProvider, baseURL?: string, apiKey?: string, authMode?: ProviderAuthMode): string[] | undefined {
+  const cacheKey = getCacheKey(provider, baseURL, apiKey, authMode);
   const item = modelCache.get(cacheKey);
   if (!item) {
     return undefined;
@@ -104,11 +107,15 @@ function getCachedModels(provider: LLMProvider, baseURL?: string): string[] | un
   return item.models;
 }
 
-function setCachedModels(provider: LLMProvider, models: string[], baseURL?: string): string[] {
+function setCachedModels(provider: LLMProvider, models: string[], requestSequence: number, baseURL?: string, apiKey?: string, authMode?: ProviderAuthMode): string[] {
   const normalized = uniqueModels(models);
-  modelCache.set(getCacheKey(provider, baseURL), {
+  const cacheKey = getCacheKey(provider, baseURL, apiKey, authMode);
+  const previous = modelCache.get(cacheKey);
+  if (previous && previous.requestSequence > requestSequence) return previous.models;
+  modelCache.set(cacheKey, {
     models: normalized,
     cachedAt: Date.now(),
+    requestSequence,
   });
   return normalized;
 }
@@ -286,7 +293,7 @@ export async function getProviderModels(
 ): Promise<string[]> {
   const fallback = getFallbackModels(provider, options);
   if (!options.forceRefresh) {
-    const cached = getCachedModels(provider, options.baseURL);
+    const cached = getCachedModels(provider, options.baseURL, options.apiKey, options.authMode);
     if (cached && cached.length > 0) {
       return cached;
     }
@@ -299,11 +306,12 @@ export async function getProviderModels(
     return fallback;
   }
 
+  const requestSequence = ++modelRequestSequence;
   try {
     const models = await fetchProviderModels(provider, normalizedApiKey, options.baseURL, options.authMode);
-    return models.length > 0 ? setCachedModels(provider, models, options.baseURL) : fallback;
+    return models.length > 0 ? setCachedModels(provider, models, requestSequence, options.baseURL, options.apiKey, options.authMode) : fallback;
   } catch {
-    const cached = getCachedModels(provider, options.baseURL);
+    const cached = getCachedModels(provider, options.baseURL, options.apiKey, options.authMode);
     if (cached && cached.length > 0) {
       return cached;
     }
@@ -317,8 +325,9 @@ export async function refreshProviderModels(
   baseURL?: string,
   authMode?: ProviderAuthMode,
 ): Promise<string[]> {
+  const requestSequence = ++modelRequestSequence;
   const models = await fetchProviderModels(provider, apiKey?.trim(), baseURL, authMode);
-  return setCachedModels(provider, models, baseURL);
+  return setCachedModels(provider, models, requestSequence, baseURL, apiKey, authMode);
 }
 
 export async function refreshProviderModelsWithFallback(
@@ -342,7 +351,7 @@ export async function refreshProviderModelsWithFallback(
       throw new Error("厂商未提供模型列表接口，请手动填写默认模型。");
     }
     return {
-      models: setCachedModels(provider, models, baseURL),
+      models,
       catalogAvailable: false,
     };
   }

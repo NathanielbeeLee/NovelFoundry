@@ -57,3 +57,29 @@ Director routes and Creative Hub may start commands, but they do not own prose
 generation, repair, timeline writes, or a second fact ledger. Chapter work is
 delegated to the shared chapter runtime. The director consumes projections and
 checkpoints from that runtime.
+
+## Execution ownership and stale attempts
+
+A command claim binds command id, worker/slot and an incrementing attempt. Worker
+names alone are reusable and cannot authorize an earlier attempt. Renewal false
+revokes execution authority immediately; renewal errors retain only the last
+confirmed deadline. A late success cannot resurrect an expired attempt. Waiting
+for a resource slot and model calls observe the authority signal. A provider that
+ignores cancellation may still finish, so cancellation alone is insufficient.
+
+`platform/db` supplies execution-scoped persistence; the director owns the lease
+predicate. Each mutation or explicit transaction conditionally locks the current
+command generation on the same connection before writing, holds the lock through
+commit, and rolls back if authority is lost. Chapter source/hash checks still
+apply independently. Do not instantiate raw clients or cache unscoped delegates
+in command runtimes. Never hold a transaction across an AI request.
+
+Scheduled director continuations register with the command scope. The executor
+drains them while renewal is live; detached descendants lose write permission
+when the attempt closes. Notifications run only after commit and outside the
+write scope, and may write delivery logs only. Recovery compares the scanned
+attempt again before requeueing; an old scan cannot reset a newer claim. Lease
+loss is runtime ownership safety, not chapter quality debt or user cancellation.
+Saved usable prose remains available to the rightful owner's recovery.
+
+See [execution-scoped persistence](../../../server/src/platform/db/README.md).

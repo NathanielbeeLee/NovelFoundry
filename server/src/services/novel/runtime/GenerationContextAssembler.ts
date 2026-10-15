@@ -1,3 +1,4 @@
+import { readResearchAnchors } from "../../knowledge/research";
 import { buildContentHash } from "../artifacts/persistence";
 import { buildDirectorCompletionProfile } from "@novelfoundry/shared/types/directorCompletion";
 import { mapRuntimePlan } from "./context/planning";
@@ -564,6 +565,8 @@ export class GenerationContextAssembler {
         chapterRepairContext: null,
       },
     });
+
+    chapterWriteContext.researchAnchors = await readResearchAnchors(novelId);
 
     // 填充事实账本：读取已发生不可逆事实，注入 completedMilestones
     try {

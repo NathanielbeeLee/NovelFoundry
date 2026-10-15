@@ -484,24 +484,24 @@ export class DirectorCommandService {
     return new DirectorCommandLeaseService(this.workflowService).leaseNextCommand(input);
   }
 
-  async markCommandRunning(commandId: string, workerId: string, leaseMs: number) {
-    return new DirectorCommandLeaseService(this.workflowService).markCommandRunning(commandId, workerId, leaseMs);
+  async markCommandRunning(commandId: string, workerId: string, leaseMs: number, attempt: number) {
+    return new DirectorCommandLeaseService(this.workflowService).markCommandRunning(commandId, workerId, leaseMs, attempt);
   }
 
-  async renewLease(commandId: string, workerId: string, leaseMs: number) {
-    return new DirectorCommandLeaseService(this.workflowService).renewLease(commandId, workerId, leaseMs);
+  async renewLease(commandId: string, workerId: string, leaseMs: number, attempt: number) {
+    return new DirectorCommandLeaseService(this.workflowService).renewLease(commandId, workerId, leaseMs, attempt);
   }
 
-  async markCommandSucceeded(commandId: string, workerId: string) {
-    return new DirectorCommandLeaseService(this.workflowService).markCommandSucceeded(commandId, workerId);
+  async markCommandSucceeded(commandId: string, workerId: string, attempt: number) {
+    return new DirectorCommandLeaseService(this.workflowService).markCommandSucceeded(commandId, workerId, attempt);
   }
 
-  async markCommandCancelled(commandId: string, workerId: string) {
-    return new DirectorCommandLeaseService(this.workflowService).markCommandCancelled(commandId, workerId);
+  async markCommandCancelled(commandId: string, workerId: string, attempt: number) {
+    return new DirectorCommandLeaseService(this.workflowService).markCommandCancelled(commandId, workerId, attempt);
   }
 
-  async markCommandFailed(commandId: string, workerId: string, error: unknown) {
-    return new DirectorCommandLeaseService(this.workflowService).markCommandFailed(commandId, workerId, error);
+  async markCommandFailed(commandId: string, workerId: string, error: unknown, attempt: number) {
+    return new DirectorCommandLeaseService(this.workflowService).markCommandFailed(commandId, workerId, error, attempt);
   }
 
   parseCommandPayload(command: NonNullable<DirectorRunCommandRow>): DirectorCommandPayload {

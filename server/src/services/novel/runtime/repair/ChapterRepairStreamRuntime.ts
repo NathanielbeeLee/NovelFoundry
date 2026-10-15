@@ -1,3 +1,5 @@
+import { eligibleReviewIssues } from "../../../audit/manual";
+import { AppError } from "../../../../middleware/errorHandler";
 import type { BaseMessageChunk } from "@langchain/core/messages";
 import type { GenerationContextPackage } from "@novelfoundry/shared/types/chapterRuntime";
 import type { ReviewIssue } from "@novelfoundry/shared/types/novel";
@@ -140,26 +142,39 @@ export class ChapterRepairStreamRuntime {
     contextPackage: GenerationContextPackage,
   ): Promise<ReviewIssue[]> {
     if (Array.isArray(options.reviewIssues)) {
-      return options.reviewIssues;
+      const eligible = eligibleReviewIssues(options.reviewIssues, content);
+      if (eligible.length === 0 && options.reviewIssues.some((issue) => issue.calibration)) {
+        throw new AppError("这些审稿意见需要核对证据，请重新审稿或选择已确认的问题。", 409);
+      }
+      return eligible;
     }
 
     const auditIssues = options.auditIssueIds?.length
       ? await prisma.auditIssue.findMany({
-        where: { id: { in: options.auditIssueIds } },
+        where: { id: { in: options.auditIssueIds }, status: "open", report: { novelId, chapterId } },
+        include: { report: { select: { legacyScoreJson: true } } },
         orderBy: { createdAt: "asc" },
       })
       : [];
     if (auditIssues.length > 0) {
-      return auditIssues.map((item) => ({
-        severity: item.severity as ReviewIssue["severity"],
-        category: item.auditType === "continuity"
-          ? "coherence"
-          : item.auditType === "character"
-            ? "logic"
-            : "pacing",
-        evidence: item.evidence,
-        fixSuggestion: item.fixSuggestion,
-      }));
+      const selected: ReviewIssue[] = auditIssues.flatMap((item) => {
+        try {
+          const metadata = JSON.parse(item.report.legacyScoreJson ?? "null")?.manualReview;
+          if (metadata) {
+            const index = /^manual_evidence_(\d+)$/.exec(item.code);
+            const finding = index ? metadata.issues?.[Number(index[1]) - 1] : null;
+            return finding ? eligibleReviewIssues([finding], content) : [];
+          }
+        } catch { /* Incomplete manual metadata cannot become a legacy approval. */ }
+        if (item.code.startsWith("manual_evidence_")) return [];
+        return [{
+          severity: item.severity as ReviewIssue["severity"],
+          category: item.auditType === "continuity" ? "coherence" : item.auditType === "character" ? "logic" : "pacing",
+          evidence: item.evidence, fixSuggestion: item.fixSuggestion,
+        }];
+      });
+      if (selected.length === 0) throw new AppError("审稿依据与当前正文不一致，请重新审稿后再修复。", 409);
+      return selected;
     }
 
     const fallbackAudit = await this.deps.auditService.auditChapter(novelId, chapterId, "full", {

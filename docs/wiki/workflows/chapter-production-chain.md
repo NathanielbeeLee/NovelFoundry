@@ -73,3 +73,29 @@ boundaries without using a writer's database or a live model provider.
 New routes, streams, jobs, or director commands may provide a different
 transport, but they must call the existing runtime facade. Do not add a second
 writer, review loop, repair helper, or timeline writer in a transport module.
+
+## Manual prose saves and review evidence
+
+A manual content write supplies the exact saved source text, including null and
+whitespace distinctions. The database conditionally updates the chapter by novel,
+chapter and source content in the same short transaction as the returned row.
+Only a successful write can synchronize artifacts. Missing preconditions fail
+explicitly; metadata-only clients keep their existing contract. A conflict keeps
+the local draft and offers comparison or reload. Continuing with the compared
+remote baseline still uses another conditional save, never a force overwrite.
+
+The editor instance belongs to the novel/chapter identity, not its query timestamp.
+A save acknowledges only submitted text. Later typing stays dirty through query
+refresh, failure and conflict. Switching chapters isolates late callbacks. This
+contract does not persist unsaved text after leaving the page.
+
+Explicit manual reviews use a distinct registered evidence contract. AI judges
+reading impact, narrative function and counterevidence in one call; host checks
+only quote positions and source identity. Unsupported, ambiguous, keep and deferred
+findings remain visible advice. Only grounded confirmed findings become ordinary
+audit issue rows, and repair validates the source again. Report JSON retains all
+findings and source hashes; old free-text reports are never labelled verified.
+Preview reviews do not replace reports for the saved manuscript. Saving reports
+locks the reviewed source in the same transaction; failed AI review remains an
+error rather than a synthetic clean score. Automatic chapter acceptance retains
+its own contract and local-quality-debt continuation rule.

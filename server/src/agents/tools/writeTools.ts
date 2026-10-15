@@ -58,7 +58,7 @@ export const writeToolDefinitions: Partial<
     outputSchema: saveChapterDraftOutputSchema,
     execute: async (_context, rawInput) => {
       const input = saveChapterDraftInputSchema.parse(rawInput);
-      await getChapter(input.novelId, input.chapterId);
+      const chapter = await getChapter(input.novelId, input.chapterId);
       if (input.dryRun) {
         return saveChapterDraftOutputSchema.parse({
           novelId: input.novelId,
@@ -71,6 +71,7 @@ export const writeToolDefinitions: Partial<
       }
       const updated = await novelService.updateChapter(input.novelId, input.chapterId, {
         content: input.content,
+        expectedContent: chapter.content,
         ...(input.title ? { title: input.title } : {}),
       });
       return saveChapterDraftOutputSchema.parse({
@@ -115,6 +116,7 @@ export const writeToolDefinitions: Partial<
       }
       const updated = await novelService.updateChapter(input.novelId, input.chapterId, {
         content: after,
+        expectedContent: chapter.content,
       });
       return applyChapterPatchOutputSchema.parse({
         novelId: input.novelId,

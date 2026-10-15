@@ -1,3 +1,5 @@
+import { drainExecutionWork } from "../../../../platform/db";
+import { CommandLeaseAuthority, CommandLeaseLostError, runWithCommandAuthority } from "./leases";
 import { AppError } from "../../../../middleware/errorHandler";
 import { prisma } from "../../../../db/prisma";
 import { NovelWorkflowService } from "../../workflow/NovelWorkflowService";
@@ -36,13 +38,25 @@ export class DirectorCommandExecutor {
     this.stateStore = deps.stateStore ?? new DirectorStateStore();
   }
 
-  async execute(commandId: string): Promise<DirectorCommandExecutionOutcome> {
-    const command = await this.commandService.getCommandById(commandId);
-    if (!command) {
-      throw new AppError("Director command not found.", 404);
-    }
-    const payload = this.commandService.parseCommandPayload(command);
-    return this.dispatch(command, payload);
+  async execute(commandId: string, authority: CommandLeaseAuthority): Promise<DirectorCommandExecutionOutcome> {
+    return runWithCommandAuthority(authority, async () => {
+      authority.assertLive();
+      const command = await this.commandService.getCommandById(commandId);
+      if (!command) {
+        throw new AppError("Director command not found.", 404);
+      }
+      if (command.id !== authority.identity.commandId || command.leaseOwner !== authority.identity.owner || command.attempt !== authority.identity.attempt
+        || !["leased", "running"].includes(command.status) || !command.leaseExpiresAt
+        || command.leaseExpiresAt.getTime() <= Date.now()) {
+        authority.revoke();
+        throw new CommandLeaseLostError(authority.identity);
+      }
+      const payload = this.commandService.parseCommandPayload(command);
+      const outcome = await this.dispatch(command, payload);
+      await drainExecutionWork();
+      authority.assertLive();
+      return outcome === "cancelled" ? outcome : this.resolveCommandOutcome(command.taskId);
+    });
   }
 
   async dispatch(
@@ -251,41 +265,43 @@ export class DirectorCommandExecutor {
     seedPatch: Record<string, unknown> = {},
     candidateSelectionReady = false,
   ): Promise<void> {
-    const row = await prisma.novelWorkflowTask.findUnique({
-      where: { id: taskId },
-      select: { seedPayloadJson: true },
-    }).catch(() => null);
-    if (!row) {
-      return;
-    }
-    const current = parseSeedPayload<{ directorCommandResults?: Record<string, unknown> }>(row.seedPayloadJson) ?? {};
-    const directorCommandResults = {
-      ...(current.directorCommandResults ?? {}),
-      [commandId]: {
-        result,
-        completedAt: new Date().toISOString(),
-      },
-    };
-    await prisma.novelWorkflowTask.update({
-      where: { id: taskId },
-      data: {
-        ...(candidateSelectionReady
-          ? {
-            status: "waiting_approval",
-            currentStage: "AI 自动导演",
-            currentItemKey: "candidate_selection_required",
-            currentItemLabel: "书级方向已准备好，请选择一套继续",
-            progress: 0.18,
-            checkpointType: "candidate_selection_required",
-            checkpointSummary: "AI 已生成可选的书级方向。",
-          }
-          : {}),
-        seedPayloadJson: mergeSeedPayload(row.seedPayloadJson, {
-          ...seedPatch,
-          directorCommandResults,
-        }),
-        heartbeatAt: new Date(),
-      },
-    }).catch(() => null);
+    await prisma.$transaction(async (tx) => {
+      const row = await tx.novelWorkflowTask.findUnique({
+        where: { id: taskId },
+        select: { seedPayloadJson: true },
+      }).catch(() => null);
+      if (!row) {
+        return;
+      }
+      const current = parseSeedPayload<{ directorCommandResults?: Record<string, unknown> }>(row.seedPayloadJson) ?? {};
+      const directorCommandResults = {
+        ...(current.directorCommandResults ?? {}),
+        [commandId]: {
+          result,
+          completedAt: new Date().toISOString(),
+        },
+      };
+      await tx.novelWorkflowTask.update({
+        where: { id: taskId },
+        data: {
+          ...(candidateSelectionReady
+            ? {
+              status: "waiting_approval",
+              currentStage: "AI 自动导演",
+              currentItemKey: "candidate_selection_required",
+              currentItemLabel: "书级方向已准备好，请选择一套继续",
+              progress: 0.18,
+              checkpointType: "candidate_selection_required",
+              checkpointSummary: "AI 已生成可选的书级方向。",
+            }
+            : {}),
+          seedPayloadJson: mergeSeedPayload(row.seedPayloadJson, {
+            ...seedPatch,
+            directorCommandResults,
+          }),
+          heartbeatAt: new Date(),
+        },
+      });
+    });
   }
 }

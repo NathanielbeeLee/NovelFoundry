@@ -144,26 +144,32 @@ export function useChapterExecutionActions({
     onMessage("生成策略已应用到当前章节。");
   };
 
-  const rewriteChapter = () => {
+  const rewriteChapter = async () => {
     const chapter = ensureChapter();
     if (!chapter) {
       return;
     }
     setGenerationActionKind("rewrite");
-    patchChapterMutation.mutate({
-      content: "",
-      chapterStatus: "pending_generation",
-      repairHistory: `${chapter.repairHistory ?? ""}\n[rewrite] ${new Date().toISOString()}`.trim(),
-    });
-    void syncNovelWorkflowStageSilently({
-      novelId,
-      stage: "chapter_execution",
-      itemLabel: "本章已重置并准备重写",
-      chapterId: chapter.id,
-      status: "waiting_approval",
-    });
-    onGenerateChapter();
-    onMessage("已触发重写流程。");
+    try {
+      await patchChapterMutation.mutateAsync({
+        content: "",
+        expectedContent: chapter.content ?? null,
+        chapterStatus: "pending_generation",
+        repairHistory: `${chapter.repairHistory ?? ""}\n[rewrite] ${new Date().toISOString()}`.trim(),
+      });
+      void syncNovelWorkflowStageSilently({
+        novelId,
+        stage: "chapter_execution",
+        itemLabel: "本章已重置并准备重写",
+        chapterId: chapter.id,
+        status: "waiting_approval",
+      });
+      onGenerateChapter();
+      onMessage("已触发重写流程。");
+    } catch {
+      setGenerationActionKind(null);
+      // Mutation error is shown above; never start generation after a rejected reset.
+    }
   };
 
   const expandChapter = () => {

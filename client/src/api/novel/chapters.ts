@@ -11,6 +11,8 @@ import type {
   ChapterEditorRewritePreviewRequest,
   ChapterEditorRewritePreviewResponse,
   ChapterStatus,
+  ChapterContentWritePrecondition,
+  ChapterSaveConflict,
 } from "@novelfoundry/shared/types/novel";
 import { apiClient } from "../client";
 
@@ -48,7 +50,7 @@ export async function createNovelChapter(
 export async function updateNovelChapter(
   id: string,
   chapterId: string,
-  payload: Partial<{
+  payload: ({ content: string } & ChapterContentWritePrecondition | { content?: never; expectedContent?: never }) & Partial<{
     title: string;
     order: number;
     content: string;
@@ -68,7 +70,7 @@ export async function updateNovelChapter(
     riskFlags: string;
   }>,
 ) {
-  const { data } = await apiClient.put<ApiResponse<Chapter>>(`/novels/${id}/chapters/${chapterId}`, payload);
+  const { data } = await apiClient.put<ApiResponse<Chapter>>(`/novels/${id}/chapters/${chapterId}`, payload, { silentErrorStatuses: [409] });
   return data;
 }
 
@@ -137,4 +139,13 @@ export async function generateChapterExecutionContract(
     payload,
   );
   return data;
+}
+
+export function getChapterSaveConflict(error: unknown): ChapterSaveConflict | null {
+  const failure = error as { status?: number; details?: { data?: ChapterSaveConflict } } | null;
+  const conflict = failure?.details?.data;
+  return failure?.status === 409 && conflict?.code === "CHAPTER_CONTENT_CONFLICT"
+    && typeof conflict.chapterId === "string"
+    && (typeof conflict.currentContent === "string" || conflict.currentContent === null)
+    && typeof conflict.updatedAt === "string" ? conflict : null;
 }

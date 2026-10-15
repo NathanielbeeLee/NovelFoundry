@@ -18,6 +18,17 @@ below; their source evidence is retained in local maintainer archives.
   formatting while preserving complete clues and rejecting uncertain values.
 - Conflicting volume or chapter positions produce a clear correction message
   before the active plan is written.
+- Saved chapters detect concurrent changes from other tabs or AI actions and
+  keep your local draft for comparison before the next save.
+- Director recovery prevents an earlier execution attempt from saving results
+  after another worker takes over, preserving the rightful run's progress.
+- Custom provider model lists remain available after restart, with the last
+  discovery time shown alongside your manual selections.
+- Manual chapter reviews show source quotes, reasons to preserve a passage and
+  uncertain findings; unsupported advice is kept out of automatic repair.
+- Knowledge documents can record research sources and extract quoted findings.
+  Choose which findings a novel may use, and revoke them when no longer needed;
+  changed or disabled sources are excluded from writing context.
 
 ### 2026-10-01
 

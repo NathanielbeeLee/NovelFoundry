@@ -252,3 +252,51 @@ test('internal image URL remapping adjusts reference-document offsets/hash and t
   assert.equal(version.content.slice(mapped.tables.DocumentChapter[0].startOffset,mapped.tables.DocumentChapter[0].endOffset),'后文');
   const crypto=require('node:crypto');assert.equal(mapped.tables.PromptTemplateVersion[0].compiledHash,crypto.createHash('sha1').update(mapped.tables.PromptTemplateVersion[0].templateJson).digest('hex').slice(0,16));
 });
+
+test('research backup follows only this novel adoption dependencies and remaps provenance without cross-book selections', async () => {
+  const text = '引用：可信原文。';
+  const tables = {
+    Novel: [row('Novel','research-book',{title:'研究小说'}), row('Novel','other-book',{title:'其他小说'})],
+    KnowledgeDocument: [row('KnowledgeDocument','research-doc',{title:'来源',activeVersionId:'research-version',status:'enabled'})],
+    KnowledgeDocumentVersion: [row('KnowledgeDocumentVersion','research-version',{documentId:'research-doc',content:text,contentHash:sha256(text),charCount:text.length})],
+    KnowledgeResearchSource: [row('KnowledgeResearchSource','research-source',{documentVersionId:'research-version',title:'来源',reliabilityReason:'单一来源',enabled:true,revision:'revision-token',contentHash:sha256(text)})],
+    KnowledgeResearchFinding: [row('KnowledgeResearchFinding','finding-own',{sourceId:'research-source',sourceRevision:'revision-token',contentHash:sha256(text),claim:'结论',quote:'可信原文',startOffset:3,endOffset:7,uncertainty:'未交叉验证'}),
+      row('KnowledgeResearchFinding','finding-other',{sourceId:'research-source',sourceRevision:'older-token',contentHash:sha256(text),claim:'他书结论',quote:'可信原文',startOffset:3,endOffset:7,uncertainty:'未验证'})],
+    KnowledgeResearchAdoption: [row('KnowledgeResearchAdoption','adoption-own',{findingId:'finding-own',novelId:'research-book'}),
+      row('KnowledgeResearchAdoption','adoption-other',{findingId:'finding-other',novelId:'other-book'})],
+  };
+  const selected = await readBookSnapshot(memoryDb(tables).tx, 'research-book');
+  assert.deepEqual(selected.tables.KnowledgeResearchAdoption.map(item=>item.id), ['adoption-own']);
+  assert.deepEqual(selected.tables.KnowledgeResearchFinding.map(item=>item.id), ['finding-own']);
+  assert.equal(selected.tables.KnowledgeResearchSource.length,1);
+  assert.equal(selected.tables.KnowledgeDocumentVersion.length,1);
+  const mapped=remapTables(selected.tables,'research-book','复制小说');
+  assert.equal(mapped.tables.KnowledgeResearchAdoption[0].novelId,mapped.novelId);
+  assert.equal(mapped.tables.KnowledgeResearchAdoption[0].findingId,mapped.ids.get('finding-own'));
+  assert.equal(mapped.tables.KnowledgeResearchFinding[0].sourceId,mapped.ids.get('research-source'));
+  assert.equal(mapped.tables.KnowledgeResearchSource[0].documentVersionId,mapped.ids.get('research-version'));
+  assert.equal(mapped.tables.KnowledgeResearchFinding[0].sourceRevision,mapped.tables.KnowledgeResearchSource[0].revision);
+  assert.equal(mapped.tables.KnowledgeResearchFinding[0].contentHash,sha256(text));
+  assert.equal(mapped.tables.KnowledgeResearchFinding[0].quote,text.slice(3,7));
+  await insertBookSnapshot(memoryDb().tx,mapped.tables);
+});
+
+test('research image references repair hashes and UTF-16 offsets while retaining stale revision identity', () => {
+  const text='🧪前文 /api/images/assets/research-image/file 后文引用。';
+  const quote='后文引用'; const start=text.indexOf(quote);
+  const tables={
+    Novel:[row('Novel','research-book',{title:'小说'})],
+    KnowledgeDocument:[row('KnowledgeDocument','research-doc',{title:'来源',activeVersionId:'research-version'})],
+    KnowledgeDocumentVersion:[row('KnowledgeDocumentVersion','research-version',{documentId:'research-doc',content:text,contentHash:sha256(text),charCount:text.length})],
+    KnowledgeResearchSource:[row('KnowledgeResearchSource','research-source',{documentVersionId:'research-version',title:'来源',revision:'current',contentHash:sha256(text)})],
+    KnowledgeResearchFinding:[row('KnowledgeResearchFinding','research-finding',{sourceId:'research-source',sourceRevision:'older',contentHash:sha256(text),quote,startOffset:start,endOffset:start+quote.length})],
+    KnowledgeResearchAdoption:[row('KnowledgeResearchAdoption','research-adoption',{findingId:'research-finding',novelId:'research-book'})],
+    ImageAsset:[row('ImageAsset','research-image',{novelId:'research-book'})],
+  };
+  const mapped=remapTables(tables,'research-book','新小说');
+  const content=mapped.tables.KnowledgeDocumentVersion[0].content;
+  const source=mapped.tables.KnowledgeResearchSource[0], finding=mapped.tables.KnowledgeResearchFinding[0];
+  assert.equal(source.contentHash,sha256(content)); assert.equal(finding.contentHash,sha256(content));
+  assert.equal(content.slice(finding.startOffset,finding.endOffset),quote);
+  assert.equal(finding.sourceRevision,'older'); assert.equal(source.revision,'current');
+});

@@ -2,6 +2,8 @@ import type { LLMProvider } from "@novelfoundry/shared/types/llm";
 import type { AuditReport, AuditType, QualityScore, ReviewIssue } from "@novelfoundry/shared/types/novel";
 import type { ChapterRuntimePackage, GenerationContextPackage } from "@novelfoundry/shared/types/chapterRuntime";
 import { prisma } from "../../db/prisma";
+import { AppError } from "../../middleware/errorHandler";
+import { manualChapterAuditPrompt } from "../../prompting/prompts/audit/manual/prompts";
 import { payoffLedgerSyncService } from "../payoff/PayoffLedgerSyncService";
 import { buildStoryModePromptBlock, normalizeStoryModeOutput } from "../storyMode/storyModeProfile";
 import { openConflictService } from "../state/OpenConflictService";
@@ -26,6 +28,7 @@ interface AuditOptions {
   contextPackage?: GenerationContextPackage;
   lengthControl?: ChapterRuntimePackage["lengthControl"];
   skipPayoffLedgerSync?: boolean;
+  manualEvidenceReview?: boolean;
 }
 
 interface AuditIssueOutput {
@@ -47,6 +50,7 @@ interface FullAuditOutput {
   score?: Partial<QualityScore>;
   issues?: ReviewIssue[];
   auditReports?: AuditReportOutput[];
+  manualReview?: { sourceContentHash: string; issues: ReviewIssue[] };
 }
 
 export interface LightAuditAssessment {
@@ -144,7 +148,7 @@ export class AuditService {
     chapterId: string,
     scope: "full" | AuditType = "full",
     options: AuditOptions = {},
-  ): Promise<{ score: QualityScore; issues: ReviewIssue[]; auditReports: AuditReport[] }> {
+  ): Promise<{ score: QualityScore; issues: ReviewIssue[]; auditReports: AuditReport[]; preview?: boolean }> {
     const chapter = await prisma.chapter.findFirst({
       where: { id: chapterId, novelId },
       include: {
@@ -160,6 +164,7 @@ export class AuditService {
     }
     const content = options.content ?? chapter.content ?? "";
     const requestedTypes: AuditType[] = scope === "full" ? ["continuity", "character", "plot", "mode_fit"] : [scope];
+    if (options.manualEvidenceReview && !content.trim()) throw new AppError("请先补充正文，再进行审稿。", 400);
     if (!content.trim()) {
       const score = normalizeScore({});
       const reports = await this.persistAuditReports(novelId, chapterId, score, requestedTypes.map((type) => ({
@@ -187,6 +192,23 @@ export class AuditService {
     }
     const structured = await this.invokeAuditLLM(novelId, chapter.novel.title, chapter.title, content, requestedTypes, options);
     const score = normalizeScore(structured.score ?? ruleScore(content));
+    if (options.manualEvidenceReview) {
+      const issues = structured.issues ?? [];
+      // A proposed revision can be reviewed without replacing saved chapter reports.
+      const reports = content !== (chapter.content ?? "") ? [] : await this.persistAuditReports(
+        novelId, chapterId, score,
+        (structured.auditReports ?? []).map((report) => ({
+          auditType: normalizeAuditType(report.auditType), overallScore: score.overall,
+          summary: report.summary,
+          issues: (report.issues ?? []).map((issue, index) => ({
+            severity: normalizeSeverity(issue.severity), code: issue.code ?? `manual_${index}`,
+            description: issue.description ?? "", evidence: issue.evidence ?? "", fixSuggestion: issue.fixSuggestion ?? "",
+          })),
+        })),
+        { expectedContent: chapter.content ?? null, issues, sourceContentHash: structured.manualReview?.sourceContentHash ?? "" },
+      );
+      return { score, issues, auditReports: reports, preview: content !== (chapter.content ?? "") };
+    }
     const auditReportsInput = requestedTypes.map((type) => {
       const matched = structured.auditReports?.find((item) => normalizeAuditType(item.auditType) === type);
       return {
@@ -340,35 +362,25 @@ export class AuditService {
       } catch {
         storyModeContext = "";
       }
-      const contextBlocks = await resolveAuditChapterContextBlocks({
-        asset: auditChapterPrompt,
-        novelId,
-        contextPackage: options.contextPackage,
-        ragContext,
-      });
-      const result = await runStructuredPrompt({
-        asset: auditChapterPrompt,
-        promptInput: {
-          novelTitle,
-          chapterTitle,
-          requestedTypes,
-          storyModeContext,
-          content,
-          ragContext,
-        },
+      const contextInput = { novelId, contextPackage: options.contextPackage, ragContext };
+      const contextBlocks = options.manualEvidenceReview
+        ? await resolveAuditChapterContextBlocks({ ...contextInput, asset: manualChapterAuditPrompt })
+        : await resolveAuditChapterContextBlocks({ ...contextInput, asset: auditChapterPrompt });
+      const invocation = {
+        promptInput: { novelTitle, chapterTitle, requestedTypes, storyModeContext, content, ragContext },
         contextBlocks,
         options: {
-          provider: options.provider,
-          model: options.model,
-          temperature: options.temperature ?? 0.1,
-          novelId,
-          chapterId: options.contextPackage?.chapter.id,
-          stage: "full_audit",
-          triggerReason: requestedTypes.join(","),
+          provider: options.provider, model: options.model, temperature: options.temperature ?? 0.1,
+          novelId, chapterId: options.contextPackage?.chapter.id,
+          stage: options.manualEvidenceReview ? "manual_evidence_audit" : "full_audit", triggerReason: requestedTypes.join(","),
         },
-      });
+      };
+      const result = options.manualEvidenceReview
+        ? await runStructuredPrompt({ ...invocation, asset: manualChapterAuditPrompt })
+        : await runStructuredPrompt({ ...invocation, asset: auditChapterPrompt });
       return result.output;
-    } catch {
+    } catch (error) {
+      if (options.manualEvidenceReview) throw error;
       return parseLegacyReviewOutput(content);
     }
   }
@@ -538,8 +550,16 @@ export class AuditService {
         fixSuggestion: string;
       }>;
     }>,
+    manual?: { expectedContent: string | null; sourceContentHash: string; issues: ReviewIssue[] },
   ): Promise<AuditReport[]> {
     await prisma.$transaction(async (tx) => {
+      if (manual) {
+        const locked = await tx.chapter.updateMany({
+          where: { id: chapterId, novelId, content: manual.expectedContent },
+          data: { content: manual.expectedContent },
+        });
+        if (locked.count !== 1) throw new AppError("正文已更改，请基于最新正文重新审稿。", 409);
+      }
       await tx.auditReport.deleteMany({
         where: {
           novelId,
@@ -547,6 +567,11 @@ export class AuditService {
           auditType: { in: reports.map((item) => item.auditType) },
         },
       });
+      if (manual) {
+        await tx.qualityReport.create({ data: {
+          novelId, chapterId, ...score, issues: JSON.stringify(manual.issues),
+        } });
+      }
       for (const report of reports) {
         await tx.auditReport.create({
           data: {
@@ -555,7 +580,7 @@ export class AuditService {
             auditType: report.auditType,
             overallScore: typeof report.overallScore === "number" ? report.overallScore : score.overall,
             summary: report.summary ?? null,
-            legacyScoreJson: JSON.stringify(score),
+            legacyScoreJson: JSON.stringify(manual ? { ...score, manualReview: { sourceContentHash: manual.sourceContentHash, issues: manual.issues } } : score),
             issues: {
               create: report.issues.map((issue) => ({
                 auditType: report.auditType,

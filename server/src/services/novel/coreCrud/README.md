@@ -43,4 +43,20 @@ Chapter removal remains limited to an empty manual chapter that has not entered
 planning or writing; it must not bypass the existing content and artifact guard.
 
 These APIs do not introduce a workflow checkpoint, promote a local quality
-warning into global replan, or change the mutation transaction boundaries.
+warning into global replan, or change generation runtime ownership.
+
+## Manual chapter save preconditions
+
+Every content update through this API requires raw `expectedContent` (including
+null versus empty string). The persistence adapter atomically updates by chapter
+id, novel id and expected prose, then reads the result inside the same transaction.
+A mismatch returns 409 with current prose and timestamp; a missing precondition
+returns 428. Older metadata-only callers remain compatible. Internal agent writes
+must forward the source they read, not fetch a new baseline to retry a rejected
+write. This protects edits since that read; agent proposal-generation freshness
+is a separate upstream contract.
+
+Only a committed update proceeds to artifact synchronization, volume mirroring
+and RAG scheduling. Rejected updates must not synchronize the rejected prose.
+This endpoint does not add an unconditional force-save option or change the
+separate generation/polish persistence paths.

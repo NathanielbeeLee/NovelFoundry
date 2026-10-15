@@ -98,3 +98,5 @@ export * from "./modelRouting.js";
 export * from "./editor/contracts.js";
 export * from "./state.js";
 export * from "./storyFacts.js";
+
+export type { ChapterContentWritePrecondition, ChapterSaveConflict } from "./chapterSave.js";

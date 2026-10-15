@@ -1,3 +1,4 @@
+import { withExecutionWriteFence } from "../platform/db";
 import fs from "node:fs";
 import path from "node:path";
 import { PrismaBetterSqlite3 } from "@prisma/adapter-better-sqlite3";
@@ -43,7 +44,7 @@ const adapter = databaseUrl.startsWith("file:")
       connectionString: databaseUrl,
     });
 
-export const prisma =
+const rawPrisma =
   global.prisma ??
   new PrismaClient({
     adapter,
@@ -51,5 +52,7 @@ export const prisma =
   });
 
 if (process.env.NODE_ENV !== "production") {
-  global.prisma = prisma;
+  global.prisma = rawPrisma;
 }
+
+export const prisma = withExecutionWriteFence(rawPrisma);

@@ -10,27 +10,15 @@ import { filterHiddenModels, parseHiddenModels, refreshProviderModels, serialize
 import { isDeepSeekThinkingModeProvider, normalizeReasoningEffort } from "../../../../llm/reasoning";
 import { getProviderEnvApiKey, getProviderEnvBaseUrl, getProviderEnvModel, isBuiltInProvider, providerRequiresApiKey, PROVIDERS } from "../../../../llm/providers";
 import { AppError } from "../../../../middleware/errorHandler";
-import { secretStore } from "../../secretStore";
+import { secretStore, type SecretStoreRecord } from "../../secretStore";
+import { beginProviderDiscovery, readProviderDiscovery, type ProviderDiscovery } from "../infrastructure/ProviderDiscoveryStore";
+import { resolveProviderDiscovery } from "./ProviderDiscoveryService";
 import { getDefaultImageModel, getImageModelOptions, getProviderImageModelMap, saveProviderImageModel } from "../../ProviderImageSettingsService";
 import { getLLMSelectionSettings } from "../../LLMSelectionSettingsService";
 import { getRagEmbeddingSettings } from "../../RagSettingsService";
 import { getRagRuntimeSettings } from "../../RagRuntimeSettingsService";
 import { upsertApiKeySchema } from "../domain/ProviderSettingsPolicy";
-type APIKeyRecordLike = {
-  provider: string;
-  displayName: string | null;
-  key: string | null;
-  model: string | null;
-  baseURL: string | null;
-  authMode: string;
-  requestProtocol?: string | null;
-  isActive: boolean;
-  reasoningEnabled?: boolean | null;
-  reasoningEffort?: string | null;
-  hiddenModels?: string | null;
-  concurrencyLimit?: number | null;
-  requestIntervalMs?: number | null;
-};
+type APIKeyRecordLike = SecretStoreRecord;
 
 type BuiltInProviderStatus = {
   provider: BuiltinLLMProvider;
@@ -43,6 +31,7 @@ type BuiltInProviderStatus = {
   currentAuthMode: ProviderAuthMode;
   requestProtocol: ModelRouteRequestProtocol;
   models: string[];
+  modelsDiscoveredAt?: string | null;
   imageModels: string[];
   defaultModel: string;
   defaultImageModel: string | null;
@@ -70,6 +59,7 @@ type CustomProviderStatus = {
   currentAuthMode: ProviderAuthMode;
   requestProtocol: ModelRouteRequestProtocol;
   models: string[];
+  modelsDiscoveredAt?: string | null;
   imageModels: string[];
   defaultModel: string;
   defaultImageModel: null;
@@ -186,12 +176,12 @@ export function buildCustomProviderStatus(item: {
   hiddenModels?: string | null;
   concurrencyLimit?: number | null;
   requestIntervalMs?: number | null;
-}, imageModel: string | undefined): CustomProviderStatus {
+}, imageModel: string | undefined, discovery?: ProviderDiscovery | null): CustomProviderStatus {
   const currentModel = normalizeOptionalText(item.model) ?? "";
   const currentBaseURL = normalizeOptionalText(item.baseURL) ?? "";
   const currentAuthMode = normalizeProviderAuthMode(item.authMode);
   const hiddenModels = parseHiddenModels(item.hiddenModels);
-  const models = filterHiddenModels(currentModel ? [currentModel] : [], hiddenModels, currentModel);
+  const models = filterHiddenModels([...(discovery?.models ?? []), currentModel], hiddenModels, currentModel);
   const supportsReasoningEffort = isDeepSeekThinkingModeProvider(item.provider, currentBaseURL, currentModel);
   return {
     provider: item.provider,
@@ -204,6 +194,7 @@ export function buildCustomProviderStatus(item: {
     currentAuthMode,
     requestProtocol: normalizeModelRequestProtocol(item.requestProtocol),
     models,
+    modelsDiscoveredAt: discovery?.discoveredAt ?? null,
     imageModels: imageModel ? [imageModel] : [],
     defaultModel: currentModel,
     defaultImageModel: null,
@@ -338,22 +329,25 @@ export async function saveProviderSettings(provider: LLMProvider, body: z.infer<
   evictSharedLimiters(provider);
 
   const hiddenModels = parseHiddenModels(data.hiddenModels);
-  let models = filterHiddenModels(getFallbackModels(provider, data.model ?? undefined), hiddenModels, data.model ?? undefined);
+  const custom = !isBuiltInProvider(provider);
+  let discovery = custom ? await readProviderDiscovery(data) : null;
+  let models = [...(discovery?.models ?? getFallbackModels(provider, data.model ?? undefined))];
+  let discoveredModels: string[] | undefined;
   let message = "厂商配置已保存。";
+  const requestStartedAt = beginProviderDiscovery();
   try {
-    models = filterHiddenModels(
-      await refreshProviderModels(
-        provider,
-        effectiveKey,
-        nextBaseURL ?? getProviderEnvBaseUrl(provider),
-        nextAuthMode,
-      ),
-      hiddenModels,
-      data.model ?? undefined,
+    discoveredModels = await refreshProviderModels(
+      provider, effectiveKey, nextBaseURL ?? getProviderEnvBaseUrl(provider), nextAuthMode,
     );
+    models = discoveredModels;
   } catch {
     message = "厂商配置已保存，但模型列表刷新失败。可以稍后在厂商卡片中刷新。";
   }
+  if (custom) {
+    discovery = await resolveProviderDiscovery(data, requestStartedAt, discoveredModels);
+    models = discovery?.models ?? [];
+  }
+  models = filterHiddenModels([...models, data.model ?? ""], hiddenModels, data.model ?? undefined);
 
   return ({
     success: true,
@@ -375,6 +369,7 @@ export async function saveProviderSettings(provider: LLMProvider, body: z.infer<
       concurrencyLimit: normalizeProviderLimit(data.concurrencyLimit),
       requestIntervalMs: normalizeProviderLimit(data.requestIntervalMs),
       models,
+      modelsDiscoveredAt: discovery?.discoveredAt ?? null,
       imageModels,
       supportsImageGeneration: Boolean(currentImageModel),
     },
@@ -395,6 +390,7 @@ export async function saveProviderSettings(provider: LLMProvider, body: z.infer<
     concurrencyLimit: number;
     requestIntervalMs: number;
     models: string[];
+    modelsDiscoveredAt?: string | null;
     imageModels: string[];
     supportsImageGeneration: boolean;
   }>);

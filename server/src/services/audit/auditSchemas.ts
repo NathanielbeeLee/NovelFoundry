@@ -21,6 +21,19 @@ function normalizeReviewIssueCategory(value: unknown): unknown {
   return normalized;
 }
 
+export const reviewEvidenceCalibrationSchema = z.object({
+  verdict: z.enum(["confirmed", "hypothesis", "deferred", "keep"]),
+  grounding: z.enum(["verified", "missing", "ambiguous", "invalid"]),
+  excerpt: z.string(),
+  startOffset: z.number().int().nonnegative().nullable(),
+  endOffset: z.number().int().nonnegative().nullable(),
+  readingImpact: z.string(),
+  counterEvidence: z.string(),
+  reason: z.string(),
+  sourceContentHash: z.string().min(1),
+  repairEligible: z.boolean(),
+});
+
 export const reviewIssueSchema = z.object({
   severity: z.enum(["low", "medium", "high", "critical"]),
   category: z.preprocess(
@@ -29,6 +42,7 @@ export const reviewIssueSchema = z.object({
   ),
   evidence: z.string().trim().min(1),
   fixSuggestion: z.string().trim().min(1),
+  calibration: reviewEvidenceCalibrationSchema.optional(),
 });
 
 const auditIssueOutputSchema = z.object({

@@ -3,6 +3,7 @@ import type { GenerationContextPackage } from "@novelfoundry/shared/types/chapte
 import { WHOLE_BOOK_REVIEW_RUN_KIND } from "@novelfoundry/shared/types/wholeBookReview";
 import { polishPrisma as prisma } from "../../modules/novel/quality/polishPersistence";
 import { runStructuredPrompt } from "../../prompting/core/promptRunner";
+import { AppError } from "../../middleware/errorHandler";
 import {
   chapterReviewPrompt,
 } from "../../prompting/prompts/novel/review.prompts";
@@ -79,13 +80,15 @@ export class NovelCoreReviewService {
       ledgerSummary: review.contextPackage?.ledgerSummary ?? null,
       contextPackage: review.contextPackage ?? null,
     });
-    await createQualityReport(novelId, chapterId, review.score, review.issues);
+    if (review.preview || (options.content !== undefined && options.content !== (chapter.content ?? ""))) {
+      return { ...review, replanRecommendation: { recommended: false, reason: "修订稿审阅仅供对照。", blockingIssueIds: [] } };
+    }
     const qualityAssessment = await chapterQualityLoopService.recordAssessment({
       novelId,
       chapterId,
       chapterOrder: chapter.order,
       score: review.score,
-      issues: review.issues,
+      issues: review.issues.filter((issue) => !issue.calibration || issue.calibration.repairEligible),
       source: options.content ? "repair_recheck" : "manual_review",
       replanRecommendation,
       terminalAction: replanRecommendation.recommended
@@ -168,6 +171,7 @@ export class NovelCoreReviewService {
     return auditService.auditChapter(novelId, chapterId, scope, {
       ...options,
       contextPackage,
+      manualEvidenceReview: true,
     });
   }
 
@@ -288,18 +292,10 @@ export class NovelCoreReviewService {
     issues: ReviewIssue[];
     auditReports?: AuditReport[];
     contextPackage?: GenerationContextPackage;
+    preview?: boolean;
   }> {
     if (!content.trim()) {
-      return {
-        score: normalizeScore({}),
-        issues: [{
-          severity: "critical",
-          category: "coherence",
-          evidence: "章节内容为空",
-          fixSuggestion: "先生成或补全正文，再进行审校",
-        }],
-        auditReports: [],
-      };
+      throw new AppError("请先补充正文，再进行审稿。", 400);
     }
 
     if (novelId && chapterId) {
@@ -310,6 +306,7 @@ export class NovelCoreReviewService {
         temperature: options.temperature,
         content,
         contextPackage,
+        manualEvidenceReview: true,
       });
       return {
         ...auditResult,

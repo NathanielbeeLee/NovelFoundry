@@ -291,12 +291,15 @@ export default function SettingsPage() {
     onSuccess: async (response, provider) => {
       const count = response.data?.models?.length ?? 0;
       const providerName = providerConfigs.find((item) => item.provider === provider)?.name ?? provider;
-      if (response.data) {
+      if (response.data && providerConfigs.find((item) => item.provider === provider)?.kind === "builtin") {
         updateProviderModelsInCache(response.data.provider, response.data.models, response.data.currentModel);
       }
-      setActionResult(`${providerName} 模型列表已刷新（${count} 个）。`);
+      if (providerConfigs.find((item) => item.provider === provider)?.kind === "custom") {
+        await queryClient.invalidateQueries({ queryKey: queryKeys.settings.apiKeys });
+      }
+      setActionResult(`${providerName}：${response.message ?? `模型列表已刷新（${count} 个）。`}`);
       toast.success(`${providerName} 模型刷新成功`, {
-        description: `已获取 ${count} 个模型。`,
+        description: response.message ?? `已获取 ${count} 个模型。`,
       });
       await invalidateProviderAuxiliaryQueries();
     },

@@ -66,6 +66,9 @@ function createCandidatesRequest(overrides = {}) {
 }
 
 function createHarness(task = createTask()) {
+  const originalTransaction = prisma.$transaction;
+  const transactionClient = Object.fromEntries(["directorRunCommand", "novelWorkflowTask", "directorStepRun", "generationJob", "directorRun", "directorEvent"].map((name) => [name, prisma[name]]));
+  prisma.$transaction = (run) => run(transactionClient);
   const commands = [];
   const bootstraps = [];
   const requeued = [];
@@ -160,7 +163,7 @@ function createHarness(task = createTask()) {
     if (where?.runAfter?.lte) {
       rows = rows.filter((row) => row.runAfter <= where.runAfter.lte);
     }
-    return rows[0] ?? null;
+    return rows[0] ? { ...rows[0] } : null;
   };
   prisma.directorRunCommand.create = async ({ data }) => {
     const row = {
@@ -218,6 +221,8 @@ function createHarness(task = createTask()) {
       if (where?.taskId && row.taskId !== where.taskId) {
         continue;
       }
+      if (where?.attempt !== undefined && row.attempt !== where.attempt) continue;
+      if (where?.leaseExpiresAt?.gt && !(row.leaseExpiresAt > where.leaseExpiresAt.gt)) continue;
       if (where?.leaseOwner && row.leaseOwner !== where.leaseOwner) {
         continue;
       }
@@ -288,6 +293,7 @@ function createHarness(task = createTask()) {
     taskUpdates,
     service: new DirectorCommandService(workflowService),
     restore() {
+      prisma.$transaction = originalTransaction;
       Object.assign(prisma.directorRunCommand, originalDirectorRunCommand);
       Object.assign(prisma.novelWorkflowTask, originalNovelWorkflowTask);
       Object.assign(prisma.directorStepRun, originalDirectorStepRun);
@@ -582,7 +588,7 @@ test("director command service marks a leased command cancelled and closes runni
       leaseMs: 30_000,
     });
 
-    await harness.service.markCommandCancelled(leased.id, "worker-a");
+    await harness.service.markCommandCancelled(leased.id, "worker-a", leased.attempt);
 
     assert.equal(harness.commands[0].status, "cancelled");
     assert.equal(harness.commands[0].leaseExpiresAt, null);
@@ -725,7 +731,8 @@ test("director command service requeues task recovery when worker execution fail
     harness.commands[0].status = "running";
     harness.commands[0].leaseOwner = "worker-a";
 
-    await harness.service.markCommandFailed("command-1", "worker-a", new Error("worker boom"));
+    harness.commands[0].leaseExpiresAt = new Date(Date.now() + 30000);
+    await harness.service.markCommandFailed("command-1", "worker-a", new Error("worker boom"), harness.commands[0].attempt);
 
     assert.equal(harness.commands[0].status, "failed");
     assert.equal(harness.commands[0].leaseExpiresAt, null);
@@ -761,4 +768,71 @@ test("concurrent Continue deduplicates and obsolete lease owners cannot affect r
   assert.equal(report.task.pendingManualRecovery, false);
   assert.equal(report.task.lastError, null);
   assert.deepEqual(report.rejectedOperations, ["renew", "running", "succeeded", "failed", "cancelled"]);
+});
+
+test("same worker ABA and expired attempts cannot renew, start, or finish successor commands", async () => {
+  const h = createHarness();
+  try {
+    await h.service.enqueueContinueCommand("task-1");
+    const old = await h.service.leaseNextCommand({ workerId: "worker-a", leaseMs: 30000 });
+    h.commands[0].attempt++;
+    assert.equal(await h.service.renewLease(old.id, "worker-a", 30000, old.attempt), false);
+    await assert.rejects(h.service.markCommandRunning(old.id, "worker-a", 30000, old.attempt), /执行权/);
+    await h.service.markCommandFailed(old.id, "worker-a", new Error("obsolete"), old.attempt);
+    await h.service.markCommandCancelled(old.id, "worker-a", old.attempt);
+    await h.service.markCommandSucceeded(old.id, "worker-a", old.attempt);
+    assert.equal(h.commands[0].status, "leased");
+    assert.equal(h.stepUpdates.length, 0);
+    assert.equal(h.requeued.length, 0);
+    h.commands[0].leaseExpiresAt = new Date(Date.now() - 1);
+    assert.equal(await h.service.renewLease(old.id, "worker-a", 30000, old.attempt + 1), false);
+    await assert.rejects(h.service.markCommandRunning(old.id, "worker-a", 30000, old.attempt + 1), /执行权/);
+  } finally { h.restore(); }
+});
+
+test("stale recovery snapshot cannot modify a command reclaimed before its CAS", async () => {
+  const h = createHarness();
+  try {
+    await h.service.enqueueContinueCommand("task-1");
+    h.commands[0].status = "running";
+    h.commands[0].attempt = 1;
+    h.commands[0].leaseExpiresAt = new Date(Date.now() - 1);
+    const find = prisma.directorRunCommand.findMany;
+    prisma.directorRunCommand.findMany = async (args) => {
+      const snapshot = await find(args);
+      h.commands[0].attempt++;
+      h.commands[0].leaseExpiresAt = new Date(Date.now() + 30000);
+      return snapshot;
+    };
+    const taskUpdateCount = h.taskUpdates.length;
+    assert.equal(await h.service.recoverStaleLeases(), 0);
+    assert.equal(h.commands[0].status, "running");
+    assert.equal(h.commands[0].attempt, 2);
+    assert.equal(h.taskUpdates.length, taskUpdateCount);
+    assert.equal(h.stepUpdates.length, 0);
+    assert.equal(h.requeued.length, 0);
+  } finally { h.restore(); }
+});
+
+test("queue failure transition rolls back command status when child persistence fails", async () => {
+  const { DirectorTaskQueue } = require("../dist/workers/DirectorTaskQueue.js");
+  const { CommandLeaseAuthority } = require("../dist/services/novel/director/commands/leases/index.js");
+  const h = createHarness(); let authority;
+  try {
+    await h.service.enqueueContinueCommand("task-1");
+    const leased = await h.service.leaseNextCommand({ workerId: "worker:slot", leaseMs: 30000 });
+    const transactionClient = Object.fromEntries(["directorRunCommand", "novelWorkflowTask", "directorStepRun", "generationJob", "directorRun", "directorEvent"].map((name) => [name, prisma[name]]));
+    prisma.$transaction = async (run) => {
+      const before = structuredClone(h.commands);
+      try { return await run(transactionClient); }
+      catch (error) { h.commands.splice(0, h.commands.length, ...before); throw error; }
+    };
+    prisma.directorStepRun.updateMany = async () => { throw new Error("child storage unavailable"); };
+    authority = new CommandLeaseAuthority({ commandId: leased.id, owner: "worker:slot", attempt: leased.attempt }, leased.leaseExpiresAt);
+    const queue = new DirectorTaskQueue({ workerId: "worker" }, h.service);
+    await assert.rejects(queue.failTask(leased.id, "slot", new Error("generation failed"), authority), /child storage unavailable/);
+    assert.equal(h.commands[0].status, "leased");
+    assert.equal(h.commands[0].leaseOwner, "worker:slot");
+    assert.equal(h.requeued.length, 0);
+  } finally { authority?.revoke(); h.restore(); }
 });

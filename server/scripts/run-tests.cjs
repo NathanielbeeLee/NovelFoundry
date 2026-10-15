@@ -18,6 +18,9 @@ const integrationTests = new Set([
   "ragCompatibilityBootstrap.test.js",
   "runtimeMigrations.test.js",
   // These suites replace the Prisma module for isolated fixtures and need process isolation.
+  "manualAuditPersistence.test.js",
+  "providerDiscovery.test.js",
+  "knowledgeResearch.test.js",
   "novelBackupPortability.test.js",
   "polishHistory.test.js",
   "novelPortabilitySqlite.integration.test.js",

@@ -1,3 +1,4 @@
+import { executionSignal } from "../../../../platform/db";
 import { StreamExecutionScope, StreamOutcomeError } from "../../../../llm/streamOutcome";
 import { type BaseMessageChunk } from "@langchain/core/messages";
 import { beginLlmLiveSession, formatLivePrompt } from "../../../../platform/llm/live/llmLiveSession";
@@ -27,6 +28,7 @@ export async function streamTextPrompt<I>(input: {
   contextBlocks?: Parameters<typeof selectContextBlocks>[0];
   options?: PromptExecutionOptions;
 }): Promise<PromptStreamRunResult<string>> {
+  input = { ...input, options: { ...input.options, signal: executionSignal(input.options?.signal) } };
   if (input.asset.mode !== "text") {
     throw new Error(`Prompt asset ${input.asset.id}@${input.asset.version} is not a text prompt.`);
   }

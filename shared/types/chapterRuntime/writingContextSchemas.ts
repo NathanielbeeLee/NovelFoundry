@@ -1,3 +1,4 @@
+import { researchAnchorSchema } from "../knowledgeResearch.js";
 import { z } from "zod";
 import { storyPlanRoleSchema } from "./primitives.js";
 import { dynamicCharacterRiskLevelSchema } from "./dynamicCharacterSchemas.js";
@@ -167,6 +168,7 @@ export const chapterCharacterHardFactSchema = z.object({
 });
 
 export const chapterWriteContextSchema = z.object({
+  researchAnchors: z.array(researchAnchorSchema).max(5).optional(),
   bookContract: bookContractContextSchema,
   productionFoundationPrompt: z.string().default(""),
   macroConstraints: macroConstraintContextSchema.nullable(),

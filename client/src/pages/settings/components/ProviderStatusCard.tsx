@@ -256,6 +256,11 @@ export default function ProviderStatusCard(props: {
           </div>
 
           <div className="space-y-2">
+            {provider.modelsDiscoveredAt ? (
+              <p className="text-xs text-muted-foreground">
+                上次获取：{new Date(provider.modelsDiscoveredAt).toLocaleString()}。历史列表不代表模型当前可用，使用前可测试连接。
+              </p>
+            ) : null}
             <div className="flex min-w-0 flex-wrap gap-1">
               {visibleModels.map((model) => (
                 <Badge

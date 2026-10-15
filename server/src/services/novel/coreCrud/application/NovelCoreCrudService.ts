@@ -5,6 +5,7 @@ import { STORY_WORLD_SLICE_SCHEMA_VERSION } from "../../storyWorldSlice/storyWor
 import { syncChapterArtifacts } from "../../novelChapterArtifacts";
 import { ChapterInput, CreateNovelInput, normalizeNovelOutput, normalizeOptionalTextForCreate, normalizeOptionalTextForUpdate, parseContinuationBookAnalysisSections, serializeContinuationBookAnalysisSections, UpdateNovelInput } from "../../novelCoreShared";
 import { queueRagDelete, queueRagUpsert } from "../../novelCoreSupport";
+import { persistChapterUpdate } from "../infrastructure/ChapterUpdatePersistence";
 import { NovelListQueryService } from "../infrastructure/NovelListQueryService";
 
 export class NovelCoreCrudService extends NovelListQueryService {
@@ -287,34 +288,8 @@ export class NovelCoreCrudService extends NovelListQueryService {
     return chapter;
   }
 
-  async updateChapter(novelId: string, chapterId: string, input: Partial<ChapterInput>) {
-    const exists = await prisma.chapter.findFirst({ where: { id: chapterId, novelId }, select: { id: true } });
-    if (!exists) {
-      throw new Error("章节不存在");
-    }
-
-    const chapter = await prisma.chapter.update({
-      where: { id: chapterId },
-      data: {
-        title: input.title,
-        order: input.order,
-        content: input.content,
-        expectation: input.expectation,
-        chapterStatus: input.chapterStatus,
-        targetWordCount: input.targetWordCount,
-        conflictLevel: input.conflictLevel,
-        revealLevel: input.revealLevel,
-        mustAvoid: input.mustAvoid,
-        taskSheet: input.taskSheet,
-        sceneCards: input.sceneCards,
-        repairHistory: input.repairHistory,
-        qualityScore: input.qualityScore,
-        continuityScore: input.continuityScore,
-        characterScore: input.characterScore,
-        pacingScore: input.pacingScore,
-        riskFlags: input.riskFlags,
-      },
-    });
+  async updateChapter(novelId: string, chapterId: string, input: import("../../novelCoreShared").ChapterUpdateInput) {
+    const chapter = await persistChapterUpdate(prisma, novelId, chapterId, input);
 
     if (typeof input.content === "string") {
       await syncChapterArtifacts(novelId, chapterId, input.content);

@@ -6,6 +6,8 @@ import { validate } from "../middleware/validate";
 import { DocumentChapterService } from "../services/knowledge/DocumentChapterService";
 import { KnowledgeService } from "../services/knowledge/KnowledgeService";
 
+import { registerResearchRoutes } from "../services/knowledge/research";
+
 const router = Router();
 const knowledgeService = new KnowledgeService();
 const documentChapterService = new DocumentChapterService();
@@ -64,6 +66,7 @@ const patchDocumentSchema = z.object({
 });
 
 router.use(authMiddleware);
+registerResearchRoutes(router);
 
 router.get("/documents", validate({ query: listDocumentsQuerySchema }), async (req, res, next) => {
   try {

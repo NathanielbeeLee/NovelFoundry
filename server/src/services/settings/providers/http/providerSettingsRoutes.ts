@@ -11,6 +11,9 @@ import { getProviderImageModelMap } from "../../ProviderImageSettingsService";
 import { providerSchema, upsertApiKeySchema } from "../domain/ProviderSettingsPolicy";
 import { buildBuiltInProviderStatus, buildCustomProviderStatus, normalizeOptionalText, normalizeProviderAuthMode, saveProviderSettings } from "../application/ProviderSettingsService";
 
+import { beginProviderDiscovery, readProviderDiscovery } from "../infrastructure/ProviderDiscoveryStore";
+import { resolveProviderDiscovery } from "../application/ProviderDiscoveryService";
+
 export function registerProviderSettingsRoutes(router: Router): void {
   router.get("/api-keys", async (_req, res, next) => {
     try {
@@ -24,9 +27,9 @@ export function registerProviderSettingsRoutes(router: Router): void {
       const builtInProviders = SUPPORTED_PROVIDERS.map((provider) =>
         buildBuiltInProviderStatus(provider, keyMap.get(provider), imageModelMap.get(provider)),
       );
-      const customProviders = keys
+      const customProviders = await Promise.all(keys
         .filter((item) => !isBuiltInProvider(item.provider))
-        .map((item) => buildCustomProviderStatus(item, imageModelMap.get(item.provider)));
+        .map(async (item) => buildCustomProviderStatus(item, imageModelMap.get(item.provider), await readProviderDiscovery(item))));
       const data = [...builtInProviders, ...customProviders];
       res.status(200).json({
         success: true,
@@ -105,6 +108,10 @@ export function registerProviderSettingsRoutes(router: Router): void {
         if (providerRequiresApiKey(provider) && !effectiveKey) {
           throw new AppError("请先配置 API Key，再刷新模型列表。", 400);
         }
+        const custom = !isBuiltInProvider(provider);
+        if (custom && !keyConfig) throw new AppError("没有找到这个自定义厂商。", 404);
+        let discovery = custom && keyConfig ? await readProviderDiscovery(keyConfig) : null;
+        const requestStartedAt = beginProviderDiscovery();
         const hiddenModels = parseHiddenModels(keyConfig?.hiddenModels);
         const currentModel = normalizeOptionalText(keyConfig?.model)
           ?? getProviderEnvModel(provider)
@@ -112,21 +119,29 @@ export function registerProviderSettingsRoutes(router: Router): void {
         const refreshResult = await refreshProviderModelsWithFallback(
           provider, effectiveKey,
           normalizeOptionalText(keyConfig?.baseURL) ?? getProviderEnvBaseUrl(provider),
-          [currentModel], normalizeProviderAuthMode(keyConfig?.authMode),
+          [...(discovery?.models ?? []), currentModel], normalizeProviderAuthMode(keyConfig?.authMode),
         );
-        const models = filterHiddenModels(refreshResult.models, hiddenModels, currentModel);
+        if (custom && keyConfig) {
+          discovery = await resolveProviderDiscovery(keyConfig, requestStartedAt,
+            refreshResult.catalogAvailable ? refreshResult.models : undefined);
+        }
+        const models = filterHiddenModels([
+          ...(custom ? discovery?.models ?? [] : refreshResult.models), currentModel,
+        ], hiddenModels, currentModel);
         res.status(200).json({
           success: true,
           data: {
             provider,
             models,
             currentModel,
+            modelsDiscoveredAt: discovery?.discoveredAt ?? null,
           },
-          message: refreshResult.catalogAvailable ? "模型列表已刷新。" : "厂商未提供模型列表接口，已保留当前手动填写的模型。",
+          message: refreshResult.catalogAvailable ? "模型列表已刷新。" : "厂商未提供模型列表接口，已保留历史列表和手动填写的模型。",
         } satisfies ApiResponse<{
           provider: string;
           models: string[];
           currentModel: string;
+          modelsDiscoveredAt: string | null;
         }>);
       } catch (error) {
         if (error instanceof Error && /failed|empty|失败|为空|未提供/i.test(error.message)) {

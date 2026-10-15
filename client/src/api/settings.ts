@@ -23,6 +23,7 @@ export interface APIKeyStatus {
   currentBaseURL: string;
   currentAuthMode: ProviderAuthMode;
   models: string[];
+  modelsDiscoveredAt?: string | null;
   imageModels: string[];
   defaultModel: string;
   defaultImageModel: string | null;
@@ -425,6 +426,7 @@ export async function refreshProviderModelList(provider: LLMProvider) {
       provider: string;
       models: string[];
       currentModel: string;
+      modelsDiscoveredAt?: string | null;
     }>
   >(`/settings/api-keys/${provider}/refresh-models`);
   return data;

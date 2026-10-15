@@ -1,3 +1,4 @@
+import { executionSignal } from "../../../../platform/db";
 import { createHash } from "node:crypto";
 import { toJSONSchema } from "zod";
 import { mapStoredMessagesToChatMessages, type BaseMessage } from "@langchain/core/messages";
@@ -28,6 +29,7 @@ export interface PreparedStructuredPromptExecution<I, O, R = O> extends Rendered
 }
 
 export async function renderStructuredPromptExecution<I, O, R = O>(input: StructuredPromptExecutionInput<I, O, R>): Promise<RenderedStructuredPromptExecution<I, O, R>> {
+  input = { ...input, options: { ...input.options, signal: executionSignal(input.options?.signal) } };
   if (input.asset.mode !== "structured" || !input.asset.outputSchema) {
     throw new Error(`Prompt asset ${input.asset.id}@${input.asset.version} is not a structured prompt.`);
   }

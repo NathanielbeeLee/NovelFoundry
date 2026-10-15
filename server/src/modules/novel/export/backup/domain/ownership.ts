@@ -2,6 +2,8 @@ import { BACKUP_MODELS } from "./catalog";
 import { type BackupRow, type BackupTables, invalid } from "./archive";
 
 export const SHELL_MODELS = new Set(["NovelWorkflowTask", "ImageGenerationTask"]);
+// Research adoption is seeded by novelId; only its finding -> source -> document version
+// dependency chain is followed. Never expand source -> findings -> other novels' adoptions.
 // Only these ownership edges expand in reverse. Foreign keys expand forward to selected dependencies.
 // Expanding every inverse relation would silently copy unrelated books/documents.
 export const CHILD_EDGES: Array<[string, string, string]> = [

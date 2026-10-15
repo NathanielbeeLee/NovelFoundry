@@ -87,7 +87,7 @@ export class NovelCoreService {
     return this.crudService.createChapter(novelId, input);
   }
 
-  async updateChapter(novelId: string, chapterId: string, input: Partial<ChapterInput>) {
+  async updateChapter(novelId: string, chapterId: string, input: import("./novelCoreShared").ChapterUpdateInput) {
     return this.crudService.updateChapter(novelId, chapterId, input);
   }
 

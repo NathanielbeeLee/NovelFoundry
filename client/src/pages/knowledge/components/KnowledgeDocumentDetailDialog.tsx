@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { AppDialogContent, Dialog } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { formatStatus } from "./knowledgeRagUi";
+import KnowledgeResearchCard from "./research/KnowledgeResearchCard";
 
 const PREVIEW_CHAR_LIMIT = 3000;
 const EXPAND_WARN_THRESHOLD = 100_000;
@@ -133,6 +134,8 @@ export default function KnowledgeDocumentDetailDialog({
                   索引失败原因：{document.latestIndexError}
                 </div>
               ) : null}
+
+              <KnowledgeResearchCard key={`${document.id}:${document.activeVersionId}`} document={document} />
 
               <Card>
                 <CardHeader>

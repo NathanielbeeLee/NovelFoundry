@@ -13,6 +13,7 @@ import { getProviderEnvApiKey, getProviderEnvModel, isBuiltInProvider, PROVIDERS
 import { authMiddleware } from "../middleware/auth";
 import { AppError } from "../middleware/errorHandler";
 import { validate } from "../middleware/validate";
+import { readProviderDiscovery } from "../services/settings/providers";
 
 const router = Router();
 
@@ -66,13 +67,14 @@ router.get("/providers", async (_req, res, next) => {
         .filter((item) => !isBuiltInProvider(item.provider))
         .map(async (item) => {
           const currentModel = item.model?.trim() || "";
-          const models = filterHiddenModels(await getProviderModels(item.provider, {
+          const discovery = await readProviderDiscovery(item);
+          const models = filterHiddenModels([...(await getProviderModels(item.provider, {
             apiKey: item.key ?? undefined,
             baseURL: item.baseURL ?? undefined,
             authMode: item.authMode === "x-api-key" || item.authMode === "none" ? item.authMode : "bearer",
             fallbackModel: currentModel,
-            fallbackModels: [currentModel],
-          }), parseHiddenModels(item.hiddenModels), currentModel);
+            fallbackModels: [...(discovery?.models ?? []), currentModel],
+          })), currentModel], parseHiddenModels(item.hiddenModels), currentModel);
           return [item.provider, {
             name: item.displayName?.trim() || item.provider,
             defaultModel: currentModel,

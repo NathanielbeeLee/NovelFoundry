@@ -15,8 +15,23 @@ Failure keeps the local text available for retry. Controlled echoes of local
 keystrokes must retain the live text editor, including trailing spaces and empty
 paragraphs, instead of rebuilding its document and undo stack.
 
-This scope does not persist unsaved drafts after navigating away or resolve
-cross-tab / concurrent AI writes. The manual chapter API still has no expected
-source precondition. Adding optimistic concurrency requires an atomic server
-check and an explicit conflict/reload interaction; silently overwriting or
-merging a conflicting manuscript is not an acceptable substitute.
+## Concurrent saves
+
+Manual prose writes and AI candidate acceptance send `expectedContent` from the
+exact persisted source, separately from normalized editor text. Null and empty
+text remain distinct. A successful acknowledgement advances this baseline but
+keeps input entered during the request. Save and candidate-apply requests cannot
+run concurrently in the same editor.
+
+A 409 response freezes remote draft adoption, preserves local prose, and shows
+both texts. The author explicitly chooses to load saved prose or retain local
+prose against the displayed baseline. Continuing does not write immediately;
+the next save still compares the raw baseline and can conflict again. No automatic
+merge or unconditional overwrite is offered. Navigating away still does not
+persist unsaved local drafts.
+
+Legacy clients that send prose without `expectedContent` receive 428 and must
+retain their draft and refresh the app. Metadata-only updates remain compatible.
+AI candidate application takes its existing pre-edit snapshot before attempting
+the guarded save; a conflict can leave an extra snapshot but cannot write the
+rejected candidate or its artifacts.

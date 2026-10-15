@@ -322,6 +322,7 @@ enum CharacterGender {
 }
 
 model Novel {
+  researchAdoptions KnowledgeResearchAdoption[]
   polishRevisions ChapterPolishRevision[]
   id                String      @id @default(cuid())
   title             String
@@ -3046,6 +3047,7 @@ model KnowledgeDocument {
 }
 
 model KnowledgeDocumentVersion {
+  researchSource KnowledgeResearchSource?
   id                 String               @id @default(cuid())
   documentId         String
   versionNumber      Int
@@ -4029,4 +4031,51 @@ model ChapterPolishMutation {
   revision ChapterPolishRevision @relation(fields: [revisionId], references: [id], onDelete: Cascade)
   @@unique([revisionId, sequence])
   @@index([entityType, entityId])
+}
+
+// Optional external research. Adoption is guidance, never canonical novel state.
+model KnowledgeResearchSource {
+  id                String @id @default(cuid())
+  documentVersionId String @unique
+  documentVersion   KnowledgeDocumentVersion @relation(fields: [documentVersionId], references: [id], onDelete: Cascade)
+  title             String
+  url               String?
+  author            String?
+  accessedAt        DateTime?
+  reliabilityReason String
+  enabled           Boolean @default(true)
+  revision          String
+  contentHash       String
+  findings          KnowledgeResearchFinding[]
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+}
+
+model KnowledgeResearchFinding {
+  id             String @id @default(cuid())
+  sourceId       String
+  source         KnowledgeResearchSource @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+  sourceRevision String
+  contentHash    String
+  claim          String
+  quote          String
+  startOffset    Int
+  endOffset      Int
+  uncertainty    String
+  adoptions      KnowledgeResearchAdoption[]
+  createdAt      DateTime @default(now())
+  @@index([sourceId, sourceRevision])
+}
+
+model KnowledgeResearchAdoption {
+  id        String @id @default(cuid())
+  findingId String
+  finding   KnowledgeResearchFinding @relation(fields: [findingId], references: [id], onDelete: Cascade)
+  novelId   String
+  novel     Novel @relation(fields: [novelId], references: [id], onDelete: Cascade)
+  revokedAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  @@unique([findingId, novelId])
+  @@index([novelId, revokedAt])
 }

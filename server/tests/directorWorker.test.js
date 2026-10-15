@@ -4,6 +4,7 @@ const assert = require("node:assert/strict");
 const { prisma } = require("../dist/db/prisma.js");
 const { DirectorWorker } = require("../dist/workers/directorWorker.js");
 const { DirectorTaskQueue } = require("../dist/workers/DirectorTaskQueue.js");
+const { CommandLeaseAuthority } = require("../dist/services/novel/director/commands/leases/index.js");
 const { taskDispatcher } = require("../dist/workers/TaskDispatcher.js");
 const { hasFixtureEnvironment, runWorkerRestartScenario } = require("./fixtures/directorRecovery/isolatedProcess.cjs");
 
@@ -34,11 +35,14 @@ test("director worker renews a leased command while waiting for resource budget"
     events.push("lease");
     return { command };
   };
-  queue.startLeaseRenewal = (commandId, slotId) => {
+  queue.startLeaseRenewal = (command, slotId) => {
+    const commandId = command.id;
     events.push(`start-renewal:${commandId}:${slotId}`);
-    return () => {
+    const authority = new CommandLeaseAuthority({ commandId, owner: `test-worker:${slotId}`, attempt: 1 }, Date.now() + 1000);
+    return { authority, stop: () => {
+      authority.revoke();
       events.push("stop-renewal");
-    };
+    } };
   };
   queue.acquireResourceGate = async (novelId, commandType) => {
     events.push(`acquire-gate:${novelId}:${commandType}`);
@@ -127,6 +131,7 @@ test("director task queue uses the guarded command lease owner", async (t) => {
       novelId: "novel-1",
       commandType: "continue",
       status: "queued",
+      attempt: 0,
       runAfter: new Date("2026-05-06T00:00:00.000Z"),
       createdAt: new Date("2026-05-06T00:00:00.000Z"),
     };
@@ -167,10 +172,13 @@ test("director task queue uses the guarded command lease owner", async (t) => {
   const leased = await queue.leaseNext("slot-1");
 
   assert.ok(leased, "should return a leased command");
-  assert.equal(leased.command, leasedCommand);
+  assert.equal(leased.command.id, leasedCommand.id);
+  assert.equal(leased.command.attempt, 1);
+  assert.equal(leased.command.leaseOwner, "worker-a:slot-1");
   assert.equal(calls[0][0], "findFirst");
   assert.equal(calls[1][0], "updateMany");
-  assert.equal(calls[2][0], "findUnique");
+  assert.equal(calls.length, 2, "claim receipt must not reread a possibly stolen generation");
+  assert.equal(calls[1][1].where.attempt, 0);
   assert.equal(calls[1][1].data.status, "leased");
   assert.deepEqual(calls[0][1].where.task, { pendingManualRecovery: false });
   assert.deepEqual(calls[1][1].where.task, { pendingManualRecovery: false });
@@ -228,4 +236,62 @@ test("application restart waits for explicit recovery and preserves saved chapte
   assert.equal(after.commands[1].status, "succeeded");
   assert.deepEqual(after.executedChapterIds, [after.chapters[1].id]);
   assert.deepEqual(after.artifacts[0], before.artifacts[0]);
+});
+
+test("lease loss cancels a resource waiter without starting or failing its command", async () => {
+  const events = [];
+  const command = { id: "lost", taskId: "task", novelId: "novel", commandType: "continue", attempt: 1,
+    leaseOwner: "worker:slot-1", leaseExpiresAt: new Date(Date.now() + 30000) };
+  const queue = new DirectorTaskQueue({ workerId: "worker", leaseMs: 30000, staleScanMs: Number.MAX_SAFE_INTEGER }, {
+    recoverStaleLeases: async () => 0, leaseNextCommand: async () => command,
+    renewLease: async () => false, markCommandRunning: async () => events.push("started"),
+    markCommandFailed: async () => events.push("failed"), markCommandSucceeded: async () => events.push("completed"),
+  });
+  await queue.acquireResourceGate("novel", "continue");
+  await queue.acquireResourceGate("novel", "continue");
+  const worker = new DirectorWorker({ queue, commandExecutor: { execute: async () => { events.push("execute"); return "completed"; } } });
+  await worker.tick("slot-1");
+  assert.deepEqual(events, []);
+  queue.releaseResourceGate("novel", "continue");
+  // The cancelled waiter must not consume this newly available slot.
+  await queue.acquireResourceGate("novel", "continue", AbortSignal.timeout(100));
+  queue.releaseResourceGate("novel", "continue");
+  queue.releaseResourceGate("novel", "continue");
+});
+
+test("renewal exceptions retain the deadline and late success cannot resurrect ownership", async () => {
+  for (const lateSuccess of [false, true]) {
+    const command = { id: "lost", attempt: 2, leaseOwner: "worker:slot-1", leaseExpiresAt: new Date(Date.now() + 30) };
+    const queue = new DirectorTaskQueue({ workerId: "worker", leaseMs: 60 }, {
+      renewLease: async () => { await delay(55); if (lateSuccess) return true; throw new Error("offline"); },
+    });
+    const { authority, stop } = queue.startLeaseRenewal(command, "slot-1");
+    await delay(40);
+    assert.equal(authority.signal.aborted, true);
+    await delay(30);
+    assert.throws(() => authority.assertLive(), /执行权/);
+    stop();
+  }
+});
+
+test("executor retains ownership through scheduled pipeline work and observes its final cancellation", async () => {
+  const { DirectorCommandExecutor } = require("../dist/services/novel/director/commands/DirectorCommandExecutor.js");
+  const { scheduleExecutionWork } = require("../dist/platform/db/index.js");
+  const authority = new CommandLeaseAuthority({ commandId: "cmd", owner: "worker", attempt: 1 }, Date.now() + 30000);
+  let backgroundFinished = false;
+  let status = "running";
+  const executor = Object.create(DirectorCommandExecutor.prototype);
+  executor.commandService = {
+    getCommandById: async () => ({ id: "cmd", taskId: "task", leaseOwner: "worker", attempt: 1, status: "running", leaseExpiresAt: new Date(Date.now() + 30000) }),
+    parseCommandPayload: () => ({}),
+  };
+  executor.workflowService = { getTaskByIdWithoutHealing: async () => ({ status }) };
+  executor.dispatch = async () => {
+    scheduleExecutionWork(async () => { await delay(15); backgroundFinished = true; status = "cancelled"; });
+    return "completed";
+  };
+  try {
+    assert.equal(await executor.execute("cmd", authority), "cancelled");
+    assert.equal(backgroundFinished, true);
+  } finally { authority.revoke(); }
 });

@@ -1,3 +1,6 @@
+import { runWithExecutionWriteScope } from "../../../../../platform/db";
+import { CommandLeaseLostError } from "./domain/CommandLeaseAuthority";
+import { commandLeasePredicate } from "./infrastructure/commandWriteScope";
 import crypto from "node:crypto";
 import { prisma } from "../../../../../db/prisma";
 import { taskDispatcher } from "../../../../../workers/TaskDispatcher";
@@ -60,66 +63,49 @@ export class DirectorCommandLeaseService {
     if (staleCommands.length === 0) {
       return 0;
     }
-    const autoRecoverableCommands = staleCommands.filter((command) => !command.task.pendingManualRecovery && isAutoRecoverableStaleCommand(command));
-    const manualRecoveryCommands = staleCommands.filter((command) => command.task.pendingManualRecovery || !isAutoRecoverableStaleCommand(command));
-
-    if (autoRecoverableCommands.length > 0) {
-      const autoRecoverableIds = autoRecoverableCommands.map((command) => command.id);
-      await prisma.directorRunCommand.updateMany({
-        where: { id: { in: autoRecoverableIds }, status: { in: ["leased", "running"] }, leaseExpiresAt: { lt: now }, task: { pendingManualRecovery: false } },
-        data: {
-          status: "queued",
-          leaseOwner: null,
-          leaseExpiresAt: null,
-          runAfter: now,
-          startedAt: null,
-          finishedAt: null,
-          errorMessage: STALE_COMMAND_AUTO_RECOVERY_MESSAGE,
-        },
-      });
-      const autoRecoverableTaskIds = Array.from(new Set(autoRecoverableCommands.map((command) => command.taskId)));
-      await prisma.novelWorkflowTask.updateMany({
-        where: { id: { in: autoRecoverableTaskIds }, pendingManualRecovery: false },
-        data: {
-          status: "queued",
-          pendingManualRecovery: false,
-          lastError: null,
-          heartbeatAt: now,
-          finishedAt: null,
-        },
-      }).catch(() => null);
-      taskDispatcher.notify();
+    let recovered = 0;
+    for (const command of staleCommands) {
+      const auto = !command.task.pendingManualRecovery && isAutoRecoverableStaleCommand(command);
+      const superseded = new Error("Stale command snapshot was superseded.");
+      try {
+        await runWithExecutionWriteScope({
+          signal: new AbortController().signal,
+          assertLive() {},
+          async lock(tx) {
+            const updated = await tx.directorRunCommand.updateMany({
+              where: {
+                id: command.id, attempt: command.attempt,
+                status: { in: ["leased", "running"] }, leaseExpiresAt: { lt: now },
+                task: { pendingManualRecovery: command.task.pendingManualRecovery },
+              },
+              data: auto ? {
+                status: "queued", leaseOwner: null, leaseExpiresAt: null, runAfter: now,
+                startedAt: null, finishedAt: null, errorMessage: STALE_COMMAND_AUTO_RECOVERY_MESSAGE,
+              } : { status: "stale", finishedAt: now, errorMessage: STALE_COMMAND_INTERNAL_MESSAGE },
+            });
+            if (updated.count !== 1) throw superseded;
+          },
+        }, () => prisma.$transaction(async (tx) => {
+          if (auto) {
+            await tx.novelWorkflowTask.updateMany({
+              where: { id: command.taskId, pendingManualRecovery: false },
+              data: { status: "queued", pendingManualRecovery: false, lastError: null, heartbeatAt: now, finishedAt: null },
+            });
+          } else {
+            await tx.directorStepRun.updateMany({
+              where: { taskId: command.taskId, status: "running" },
+              data: { status: "failed", finishedAt: now, error: STALE_COMMAND_INTERNAL_MESSAGE },
+            });
+            await this.workflowService.requeueTaskForRecovery(command.taskId, STALE_COMMAND_MANUAL_RECOVERY_MESSAGE);
+          }
+        }));
+        recovered += 1;
+      } catch (error) {
+        if (error !== superseded) throw error;
+      }
     }
-
-    if (manualRecoveryCommands.length === 0) {
-      return staleCommands.length;
-    }
-    const manualRecoveryIds = manualRecoveryCommands.map((command) => command.id);
-    await prisma.directorRunCommand.updateMany({
-      where: { id: { in: manualRecoveryIds } },
-      data: {
-        status: "stale",
-        finishedAt: now,
-        errorMessage: STALE_COMMAND_INTERNAL_MESSAGE,
-      },
-    });
-    const manualRecoveryTaskIds = Array.from(new Set(manualRecoveryCommands.map((command) => command.taskId)));
-    for (const taskId of manualRecoveryTaskIds) {
-      await prisma.directorStepRun.updateMany({
-        where: {
-          taskId,
-          status: "running",
-        },
-        data: {
-          status: "failed",
-          finishedAt: now,
-          error: STALE_COMMAND_INTERNAL_MESSAGE,
-        },
-      }).catch(() => null);
-      await this.workflowService.requeueTaskForRecovery(taskId, STALE_COMMAND_MANUAL_RECOVERY_MESSAGE)
-        .catch(() => null);
-    }
-    return staleCommands.length;
+    if (recovered) taskDispatcher.notify();
+    return recovered;
   }
 
   async leaseNextCommand(input: {
@@ -142,6 +128,7 @@ export class DirectorCommandLeaseService {
     const claimed = await prisma.directorRunCommand.updateMany({
       where: {
         id: candidate.id,
+        attempt: candidate.attempt,
         status: "queued",
         task: { pendingManualRecovery: false },
       },
@@ -155,16 +142,14 @@ export class DirectorCommandLeaseService {
     if (claimed.count !== 1) {
       return null;
     }
-    return prisma.directorRunCommand.findUnique({ where: { id: candidate.id } });
+    return { ...candidate, status: "leased", leaseOwner: input.workerId, leaseExpiresAt, attempt: candidate.attempt + 1 };
   }
 
-  async markCommandRunning(commandId: string, workerId: string, leaseMs: number) {
+  async markCommandRunning(commandId: string, workerId: string, leaseMs: number, attempt: number) {
     const now = new Date();
-    await prisma.directorRunCommand.updateMany({
+    const updated = await prisma.directorRunCommand.updateMany({
       where: {
-        id: commandId,
-        leaseOwner: workerId,
-        status: { in: ["leased", "running"] },
+        ...commandLeasePredicate({ commandId, owner: workerId, attempt }),
       },
       data: {
         status: "running",
@@ -172,14 +157,13 @@ export class DirectorCommandLeaseService {
         leaseExpiresAt: new Date(now.getTime() + leaseMs),
       },
     });
+    if (updated.count !== 1) throw new CommandLeaseLostError({ commandId, owner: workerId, attempt });
   }
 
-  async renewLease(commandId: string, workerId: string, leaseMs: number): Promise<boolean> {
+  async renewLease(commandId: string, workerId: string, leaseMs: number, attempt: number): Promise<boolean> {
     const updated = await prisma.directorRunCommand.updateMany({
       where: {
-        id: commandId,
-        leaseOwner: workerId,
-        status: { in: ["leased", "running"] },
+        ...commandLeasePredicate({ commandId, owner: workerId, attempt }),
       },
       data: {
         leaseExpiresAt: new Date(Date.now() + leaseMs),
@@ -188,12 +172,10 @@ export class DirectorCommandLeaseService {
     return updated.count === 1;
   }
 
-  async markCommandSucceeded(commandId: string, workerId: string): Promise<void> {
+  async markCommandSucceeded(commandId: string, workerId: string, attempt: number): Promise<void> {
     await prisma.directorRunCommand.updateMany({
       where: {
-        id: commandId,
-        leaseOwner: workerId,
-        status: { in: ["leased", "running"] },
+        ...commandLeasePredicate({ commandId, owner: workerId, attempt }),
       },
       data: {
         status: "succeeded",
@@ -204,13 +186,11 @@ export class DirectorCommandLeaseService {
     });
   }
 
-  async markCommandCancelled(commandId: string, workerId: string): Promise<void> {
+  async markCommandCancelled(commandId: string, workerId: string, attempt: number): Promise<void> {
     const finishedAt = new Date();
     const updated = await prisma.directorRunCommand.updateMany({
       where: {
-        id: commandId,
-        leaseOwner: workerId,
-        status: { in: ["leased", "running"] },
+        ...commandLeasePredicate({ commandId, owner: workerId, attempt }),
       },
       data: {
         status: "cancelled",
@@ -228,14 +208,12 @@ export class DirectorCommandLeaseService {
     }
   }
 
-  async markCommandFailed(commandId: string, workerId: string, error: unknown): Promise<void> {
+  async markCommandFailed(commandId: string, workerId: string, error: unknown, attempt: number): Promise<void> {
     const message = error instanceof Error ? error.message : String(error);
     const failedAt = new Date();
     const updated = await prisma.directorRunCommand.updateMany({
       where: {
-        id: commandId,
-        leaseOwner: workerId,
-        status: { in: ["leased", "running"] },
+        ...commandLeasePredicate({ commandId, owner: workerId, attempt }),
       },
       data: {
         status: "failed",
@@ -261,9 +239,8 @@ export class DirectorCommandLeaseService {
         finishedAt: failedAt,
         error: message,
       },
-    }).catch(() => null);
-    await this.workflowService.requeueTaskForRecovery(command.taskId, message)
-      .catch(() => null);
+    });
+    await this.workflowService.requeueTaskForRecovery(command.taskId, message);
   }
 
   async closeCancelledTaskRuntimeState(taskId: string, now: Date): Promise<void> {
@@ -277,7 +254,7 @@ export class DirectorCommandLeaseService {
         finishedAt: now,
         error: CANCELLED_COMMAND_MESSAGE,
       },
-    }).catch(() => null);
+    });
     await prisma.generationJob.updateMany({
       where: {
         status: { in: ["queued", "running"] },
@@ -289,11 +266,11 @@ export class DirectorCommandLeaseService {
         finishedAt: now,
         error: CANCELLED_COMMAND_MESSAGE,
       },
-    }).catch(() => null);
+    });
     const run = await prisma.directorRun.findUnique({
       where: { taskId },
       select: { id: true, novelId: true },
-    }).catch(() => null);
+    });
     if (!run) {
       return;
     }
@@ -308,7 +285,7 @@ export class DirectorCommandLeaseService {
         severity: "low",
         occurredAt: now,
       },
-    }).catch(() => null);
+    });
   }
 
 }

@@ -1,3 +1,5 @@
+import { prisma } from "../db/prisma";
+import { CommandLeaseAuthority, runWithCommandAuthority } from "../services/novel/director/commands/leases";
 import os from "node:os";
 import { DirectorCommandService } from "../services/novel/director/commands/DirectorCommandService";
 import { resourceClassForCommand } from "../services/novel/director/commands/DirectorCommandServiceHelpers";
@@ -20,14 +22,23 @@ class ResourceGate {
 
   constructor(private readonly limit: number) {}
 
-  async acquire(): Promise<void> {
+  async acquire(signal?: AbortSignal): Promise<void> {
+    signal?.throwIfAborted();
     if (this.limit <= 0) return;
     if (this.active < this.limit) {
       this.active += 1;
       return;
     }
-    await new Promise<void>((resolve) => {
-      this.waiters.push(resolve);
+    await new Promise<void>((resolve, reject) => {
+      const grant = () => { signal?.removeEventListener("abort", cancel); resolve(); };
+      const cancel = () => {
+        const index = this.waiters.indexOf(grant);
+        if (index >= 0) this.waiters.splice(index, 1);
+        reject(signal?.reason);
+      };
+      this.waiters.push(grant);
+      signal?.addEventListener("abort", cancel, { once: true });
+      if (signal?.aborted) cancel();
     });
   }
 
@@ -95,7 +106,7 @@ export class DirectorTaskQueue {
     return command ? { command } : null;
   }
 
-  async acquireResourceGate(novelId: string | null | undefined, commandType: string): Promise<void> {
+  async acquireResourceGate(novelId: string | null | undefined, commandType: string, signal?: AbortSignal): Promise<void> {
     const resourceClass = resourceClassForCommand(commandType);
     const key = `${novelId?.trim() || "_global"}:${resourceClass}`;
     let gate = this.gates.get(key);
@@ -104,7 +115,7 @@ export class DirectorTaskQueue {
       gate = new ResourceGate(resolveNumberEnv(envName, PER_NOVEL_RESOURCE_LIMITS[resourceClass] ?? 2));
       this.gates.set(key, gate);
     }
-    await gate.acquire();
+    await gate.acquire(signal);
   }
 
   releaseResourceGate(novelId: string | null | undefined, commandType: string): void {
@@ -113,33 +124,55 @@ export class DirectorTaskQueue {
     this.gates.get(key)?.release();
   }
 
-  startLeaseRenewal(commandId: string, slotId: string): () => void {
-    const renew = () => {
-      void this.commandService.renewLease(commandId, `${this.workerId}:${slotId}`, this.leaseMs).catch((error) => {
-        console.warn(`[task-queue] failed to renew command lease commandId=${commandId}`, error);
-      });
+  startLeaseRenewal(command: LeasedTask["command"], slotId: string): { authority: CommandLeaseAuthority; stop: () => void } {
+    const owner = `${this.workerId}:${slotId}`;
+    const authority = new CommandLeaseAuthority({ commandId: command.id, owner, attempt: command.attempt }, command.leaseExpiresAt ?? 0);
+    if (command.leaseOwner !== owner || !Number.isInteger(command.attempt)) authority.revoke();
+    let stopped = false;
+    let renewing = false;
+    const renew = async () => {
+      if (stopped || renewing || authority.signal.aborted) return;
+      renewing = true;
+      const requestedAt = Date.now();
+      try {
+        authority.assertLive();
+        const renewed = await this.commandService.renewLease(command.id, owner, this.leaseMs, command.attempt);
+        if (!renewed) authority.revoke();
+        else if (!stopped) authority.confirmRenewal(requestedAt + this.leaseMs);
+      } catch (error) {
+        // Keep the last confirmed deadline; exceptions never grant extra time.
+        console.warn(`[task-queue] failed to renew command lease commandId=${command.id}`, error);
+      } finally { renewing = false; }
     };
-    renew();
-    const timer = setInterval(renew, Math.max(100, Math.floor(this.leaseMs / 3)));
-    return () => clearInterval(timer);
+    void renew();
+    const timer = setInterval(() => void renew(), Math.max(10, Math.floor(this.leaseMs / 3)));
+    return { authority, stop: () => { stopped = true; clearInterval(timer); authority.revoke(); } };
   }
 
-  async markRunning(commandId: string, slotId: string): Promise<void> {
-    await this.commandService.markCommandRunning(commandId, `${this.workerId}:${slotId}`, this.leaseMs);
+  async markRunning(commandId: string, slotId: string, authority: CommandLeaseAuthority): Promise<void> {
+    authority.assertLive();
+    await this.commandService.markCommandRunning(commandId, `${this.workerId}:${slotId}`, this.leaseMs, authority.identity.attempt);
+    authority.assertLive();
   }
 
-  async completeTask(commandId: string, slotId: string): Promise<void> {
-    await this.commandService.markCommandSucceeded(commandId, `${this.workerId}:${slotId}`);
+  async completeTask(commandId: string, slotId: string, authority: CommandLeaseAuthority): Promise<void> {
+    await runWithCommandAuthority(authority, () => prisma.$transaction(async () => {
+      await this.commandService.markCommandSucceeded(commandId, `${this.workerId}:${slotId}`, authority.identity.attempt);
+    }));
     const command = await this.commandService.getCommandById(commandId);
     taskDispatcher.notify({ taskId: command?.taskId });
   }
 
-  async cancelTask(commandId: string, slotId: string): Promise<void> {
-    await this.commandService.markCommandCancelled(commandId, `${this.workerId}:${slotId}`);
+  async cancelTask(commandId: string, slotId: string, authority: CommandLeaseAuthority): Promise<void> {
+    await runWithCommandAuthority(authority, () => prisma.$transaction(async () => {
+      await this.commandService.markCommandCancelled(commandId, `${this.workerId}:${slotId}`, authority.identity.attempt);
+    }));
   }
 
-  async failTask(commandId: string, slotId: string, error: unknown): Promise<void> {
-    await this.commandService.markCommandFailed(commandId, `${this.workerId}:${slotId}`, error);
+  async failTask(commandId: string, slotId: string, error: unknown, authority: CommandLeaseAuthority): Promise<void> {
+    await runWithCommandAuthority(authority, () => prisma.$transaction(async () => {
+      await this.commandService.markCommandFailed(commandId, `${this.workerId}:${slotId}`, error, authority.identity.attempt);
+    }));
   }
 
   async waitForWork(): Promise<void> {

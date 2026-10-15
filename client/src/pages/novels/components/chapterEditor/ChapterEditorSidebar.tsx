@@ -9,6 +9,7 @@ interface ChapterEditorSidebarProps {
   saveStatusLabel: string;
   isDirty: boolean;
   isSaving: boolean;
+  saveBlocked?: boolean;
   selectedDiagnosticId: string | null;
   onBack?: () => void;
   onOpenVersionHistory?: () => void;
@@ -40,6 +41,7 @@ export default function ChapterEditorSidebar(props: ChapterEditorSidebarProps) {
     saveStatusLabel,
     isDirty,
     isSaving,
+    saveBlocked,
     selectedDiagnosticId,
     onBack,
     onOpenVersionHistory,
@@ -93,10 +95,10 @@ export default function ChapterEditorSidebar(props: ChapterEditorSidebarProps) {
               <Button
                 size="sm"
                 onClick={onSave}
-                disabled={!isDirty || isSaving}
+                disabled={!isDirty || isSaving || saveBlocked}
                 className="w-full"
               >
-                {isSaving ? "保存中..." : "保存"}
+                {saveBlocked ? "请先处理正文冲突" : isSaving ? "保存中..." : "保存"}
               </Button>
               {onOpenVersionHistory ? (
                 <Button size="sm" variant="outline" onClick={onOpenVersionHistory} className="w-full">

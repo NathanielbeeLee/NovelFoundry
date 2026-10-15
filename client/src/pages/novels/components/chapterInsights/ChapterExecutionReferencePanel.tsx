@@ -1,5 +1,7 @@
+import { ReviewFindingCard, readStoredManualFindings } from "@/features/chapterReview";
 import type {
   AuditReport,
+  ReviewIssue,
   Chapter,
   ReplanRecommendation,
   ReplanResult,
@@ -46,7 +48,7 @@ interface ChapterExecutionReferencePanelProps {
   };
   chapterRuntimePackage?: ChapterRuntimePackage | null;
   reviewResult: {
-    issues?: Array<{ category: string; fixSuggestion: string }>;
+    issues?: ReviewIssue[];
   } | null;
   openAuditIssues: Array<{ id: string; auditType: string; fixSuggestion: string }>;
   repairStreamContent: string;
@@ -213,13 +215,10 @@ export default function ChapterExecutionReferencePanel(props: ChapterExecutionRe
 
           <div className="rounded-2xl border p-4 text-sm">
             <div className="font-semibold text-foreground">最近审校问题</div>
-            {reviewResult?.issues?.length ? (
+            {(reviewResult?.issues ?? readStoredManualFindings(chapterAuditReports)).length ? (
               <div className="mt-3 space-y-2 text-xs text-muted-foreground">
-                {reviewResult.issues.slice(0, 5).map((item, index) => (
-                  <div key={`${item.category}-${index}`} className="rounded-xl border p-3">
-                    <div className="font-medium text-foreground">{item.category}</div>
-                    <div className="mt-1 leading-6">{item.fixSuggestion}</div>
-                  </div>
+                {(reviewResult?.issues ?? readStoredManualFindings(chapterAuditReports)).map((item, index) => (
+                  <ReviewFindingCard key={`${item.category}-${index}`} issue={item} />
                 ))}
               </div>
             ) : (

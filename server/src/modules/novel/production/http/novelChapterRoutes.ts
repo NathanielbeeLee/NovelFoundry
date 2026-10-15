@@ -2,6 +2,7 @@ import type { Router } from "express";
 import type { ApiResponse } from "@novelfoundry/shared/types/api";
 import { z } from "zod";
 import { agentRuntime } from "../../../../agents";
+import { ChapterSaveConflictError } from "../../../../services/novel/coreCrud";
 import { validate } from "../../../../middleware/validate";
 import type { NovelApplicationServices } from "../../../../services/novel/application/NovelApplicationContracts";
 
@@ -81,6 +82,10 @@ export function registerNovelChapterRoutes(input: RegisterNovelChapterRoutesInpu
           message: "Chapter updated.",
         } satisfies ApiResponse<typeof data>);
       } catch (error) {
+        if (error instanceof ChapterSaveConflictError) {
+          res.status(409).json({ success: false, error: error.message, data: error.conflict });
+          return;
+        }
         next(error);
       }
     },

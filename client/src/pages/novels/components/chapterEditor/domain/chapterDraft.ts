@@ -2,12 +2,15 @@ export interface ChapterDraft {
   content: string;
   savedContent: string;
   remoteContent: string;
+  sourceContent: string | null;
+  remoteSourceContent: string | null;
+  pendingSourceContent?: string | null;
   pendingContent?: string;
   status: "idle" | "saving" | "saved" | "error";
 }
 
-export function createChapterDraft(content: string): ChapterDraft {
-  return { content, savedContent: content, remoteContent: content, status: "idle" };
+export function createChapterDraft(content: string, sourceContent: string | null = content): ChapterDraft {
+  return { content, savedContent: content, remoteContent: content, sourceContent, remoteSourceContent: sourceContent, status: "idle" };
 }
 
 export function editChapterDraft(draft: ChapterDraft, content: string): ChapterDraft {
@@ -15,27 +18,38 @@ export function editChapterDraft(draft: ChapterDraft, content: string): ChapterD
 }
 
 export function acknowledgeChapterSave(draft: ChapterDraft, submitted: string): ChapterDraft {
-  return { ...draft, pendingContent: undefined, savedContent: submitted, status: draft.content === submitted ? "saved" : "idle" };
+  return { ...draft, pendingContent: undefined, pendingSourceContent: undefined, sourceContent: submitted, savedContent: submitted, status: draft.content === submitted ? "saved" : "idle" };
 }
 
 /** Remote refreshes acknowledge persisted prose; they never replace a dirty local draft.
  * Equivalent save echoes may differ only by the editor's paragraph normalization.
- * Cross-client write conflicts still require an API-level expected-source contract.
+ * The raw source is the CAS token; normalized editor content is never that token.
  */
 export function receiveChapterContent(
   draft: ChapterDraft,
   content: string,
   equivalentToSaved = content === draft.savedContent,
+  sourceContent: string | null = content,
 ): ChapterDraft {
-  if (content === draft.remoteContent) {
+  if (content === draft.remoteContent && sourceContent === draft.remoteSourceContent) {
     if (draft.pendingContent !== undefined && draft.status !== "saving" && draft.content === draft.savedContent) {
-      return createChapterDraft(draft.pendingContent);
+      return createChapterDraft(draft.pendingContent, draft.pendingSourceContent);
     }
     return draft;
   }
-  if (equivalentToSaved) return { ...draft, remoteContent: content, pendingContent: undefined };
+  if (equivalentToSaved && sourceContent === draft.sourceContent) return { ...draft, remoteContent: content, remoteSourceContent: sourceContent, pendingContent: undefined, pendingSourceContent: undefined };
   if (draft.status === "saving" || draft.content !== draft.savedContent) {
-    return { ...draft, remoteContent: content, pendingContent: content };
+    return { ...draft, remoteContent: content, remoteSourceContent: sourceContent, pendingContent: content, pendingSourceContent: sourceContent };
   }
-  return createChapterDraft(content);
+  if (equivalentToSaved) return { ...draft, sourceContent, remoteContent: content, remoteSourceContent: sourceContent };
+  return createChapterDraft(content, sourceContent);
+}
+
+/** Explicit choice after showing both texts. Keep old query observation until refetch catches up. */
+export function resolveChapterConflict(
+  draft: ChapterDraft, remoteContent: string, rawContent: string | null, keepLocal: boolean,
+): ChapterDraft {
+  return { ...draft, content: keepLocal ? draft.content : remoteContent,
+    savedContent: remoteContent, sourceContent: rawContent,
+    pendingContent: undefined, pendingSourceContent: undefined, status: "idle" };
 }

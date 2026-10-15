@@ -181,3 +181,24 @@ Preparation is a configuration/read step; live-call telemetry and success
 records belong to actual execution. Supported template scope remains controlled
 by Prompt Workbench; a shared preparation API does not enable templates for
 every prompt family.
+
+## Manual review and adopted research
+
+`audit.chapter.manual_evidence@v1` is used by explicit manual review endpoints.
+It requires complete AI scores and separate explanations, verbatim quotes,
+reading impact, counterevidence and confirmed/hypothesis/deferred/keep decisions.
+The host grounds each quote in the exact input snapshot; it does not decide
+literary quality. Missing or ambiguous evidence stays advisory, and cannot enter
+repair as a confirmed finding. HTTP contracts preserve this metadata; repair
+checks source hash and positions again, including saved audit issue selections.
+Manual report failure never falls through to rule-generated scores. Automatic
+acceptance and whole-book synthesis keep their own contracts.
+
+`knowledge.research.extract@v1` reads one complete bounded document. It produces
+up to five supported findings with exact quotes and uncertainty. Source metadata
+and manuscript text are untrusted material, not model instructions. Prompt
+contracts load through a pure public entrypoint without database initialization
+or route registration. Only explicit author adoptions from fresh sources enter
+the protected `research_anchors` context block; they remain external research
+references rather than canonical story facts. See the
+[research adoption workflow](../workflows/knowledge-research-adoption.md).

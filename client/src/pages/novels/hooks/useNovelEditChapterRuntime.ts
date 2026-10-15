@@ -167,6 +167,11 @@ export function useNovelEditChapterRuntime({
       setChapterOperationMessage("请先选择章节。");
       return;
     }
+    const eligible = issues.filter((issue) => !issue.calibration || issue.calibration.repairEligible);
+    if (eligible.length === 0 && issues.some((issue) => issue.calibration)) {
+      setChapterOperationMessage("这些意见需要确认依据，请选择有原文证据的问题或重新审稿。");
+      return;
+    }
     setChapterOperationMessage("正在生成修复稿...");
     setRepairBeforeContent(selectedChapter?.content ?? "");
     setRepairAfterContent("");
@@ -177,7 +182,7 @@ export function useNovelEditChapterRuntime({
     void repairSSE.start(`/novels/${novelId}/chapters/${selectedChapterId}/repair`, {
       provider: llm.provider,
       model: llm.model,
-      reviewIssues: issues,
+      reviewIssues: eligible,
       auditIssueIds: openAuditIssueIds,
     });
   };

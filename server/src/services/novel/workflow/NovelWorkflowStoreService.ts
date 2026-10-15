@@ -1,3 +1,4 @@
+import { afterExecutionCommit } from "../../../platform/db";
 import { prisma } from "../../../db/prisma";
 import { withSqliteRetry } from "../../../db/sqliteRetry";
 import { getArchivedTaskIdSet, isTaskArchived } from "../../task/taskArchive";
@@ -172,10 +173,8 @@ export class NovelWorkflowStoreService {
       }),
       { label: "novelWorkflowTask.update" },
     ) as unknown as T;
-    await this.notifyAutoDirectorTaskTransition({
-      before: input.before,
-      after: next,
-    });
+    const notify = () => this.notifyAutoDirectorTaskTransition({ before: input.before, after: next });
+    if (!afterExecutionCommit(notify)) await notify();
     return next;
   }
 

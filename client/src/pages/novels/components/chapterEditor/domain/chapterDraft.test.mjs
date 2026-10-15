@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { createChapterDraft, editChapterDraft, acknowledgeChapterSave, receiveChapterContent } from "./chapterDraft.ts";
+import { createChapterDraft, editChapterDraft, acknowledgeChapterSave, receiveChapterContent, resolveChapterConflict } from "./chapterDraft.ts";
 
 const startSave = (draft) => ({ ...draft, status: "saving" });
 
@@ -54,4 +54,30 @@ test("save echo normalization does not replace local whitespace or mark it dirty
 test("success does not revert to the pre-save query value before refetch", () => {
   const draft = acknowledgeChapterSave(editChapterDraft(createChapterDraft("original"), "saved"), "saved");
   assert.equal(receiveChapterContent(draft, "original").content, "saved");
+});
+
+
+test("dirty draft keeps exact raw source even when a refresh normalizes to the same text", () => {
+  let draft = editChapterDraft(createChapterDraft("text", "text  "), "local edit");
+  draft = receiveChapterContent(draft, "text", true, "text\n");
+  assert.equal(draft.sourceContent, "text  ");
+  assert.equal(draft.content, "local edit");
+});
+
+test("null and empty source remain distinct while editor shows empty text", () => {
+  const draft = editChapterDraft(createChapterDraft("", null), "first prose");
+  assert.equal(draft.sourceContent, null);
+  assert.equal(acknowledgeChapterSave(draft, "first prose").sourceContent, "first prose");
+});
+
+test("explicit conflict decisions keep local or load remote without stale-query rollback", () => {
+  const local = editChapterDraft(createChapterDraft("old"), "my unsaved text");
+  const kept = resolveChapterConflict(local, "remote", "remote  ", true);
+  assert.equal(kept.content, "my unsaved text");
+  assert.equal(kept.sourceContent, "remote  ");
+  assert.equal(receiveChapterContent(kept, "old").sourceContent, "remote  ");
+  const loaded = resolveChapterConflict(local, "remote", "remote  ", false);
+  assert.equal(loaded.content, "remote");
+  assert.equal(loaded.savedContent, "remote");
+  assert.equal(receiveChapterContent(loaded, "old").content, "remote");
 });

@@ -29,6 +29,33 @@ export function repairReferenceMetadata(source: BackupTables, target: BackupTabl
       if (typeof old[key] === "number") row[key] = rewrite(String(version.content).slice(0, old[key] as number)).length;
     }
   }
+  const researchSources = new Map((source.KnowledgeResearchSource ?? []).map((entry) => [entry.id, entry]));
+  for (const old of source.KnowledgeResearchSource ?? []) {
+    const version = versions.get(String(old.documentVersionId));
+    if (!version || old.contentHash !== sha256(String(version.content))) continue; // Preserve stale provenance.
+    const row = target.KnowledgeResearchSource.find((entry) => entry.id === ids.get(old.id))!;
+    row.contentHash = sha256(rewrite(String(version.content)));
+  }
+  for (const old of source.KnowledgeResearchFinding ?? []) {
+    const researchSource = researchSources.get(String(old.sourceId));
+    const version = researchSource && versions.get(String(researchSource.documentVersionId));
+    if (!version || old.contentHash !== sha256(String(version.content))) continue;
+    const content = String(version.content);
+    const start = Number(old.startOffset), end = Number(old.endOffset);
+    if (start < 0 || end > content.length || end <= start || content.slice(start, end) !== old.quote) continue;
+    const row = target.KnowledgeResearchFinding.find((entry) => entry.id === ids.get(old.id))!;
+    const nextStart = rewrite(content.slice(0, start)).length;
+    const nextEnd = rewrite(content.slice(0, end)).length;
+    const nextQuote = rewrite(String(old.quote));
+    // Partial excerpts inside a remapped image URL cannot be relocated safely: retain their
+    // old hash so freshness fails instead of promoting altered text to verified evidence.
+    if (rewrite(content).slice(nextStart, nextEnd) !== nextQuote) continue;
+    row.startOffset = nextStart;
+    row.endOffset = nextEnd;
+    row.quote = nextQuote;
+    row.contentHash = sha256(rewrite(content));
+    // sourceRevision is a lineage token, not an entity id; retain it to preserve freshness/staleness.
+  }
   for (const old of source.PromptTemplateVersion ?? []) {
     const row = target.PromptTemplateVersion.find((entry) => entry.id === ids.get(old.id))!;
     if (row.templateJson === old.templateJson) continue;

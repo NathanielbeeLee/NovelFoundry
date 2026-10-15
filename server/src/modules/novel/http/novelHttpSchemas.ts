@@ -1,3 +1,4 @@
+import { reviewEvidenceCalibrationSchema } from "../../../services/audit/auditSchemas";
 import { z } from "zod";
 import { MAX_VOLUME_COUNT } from "@novelfoundry/shared/types/volumePlanning";
 import { llmProviderSchema } from "../../../llm/providerSchema";
@@ -217,6 +218,7 @@ export const chapterSchema = z.object({
 });
 
 export const updateChapterSchema = z.object({
+  expectedContent: z.string().nullable().optional(),
   title: z.string().trim().min(1).optional(),
   order: z.number().int().nonnegative().optional(),
   content: z.string().optional(),
@@ -430,6 +432,7 @@ const reviewIssueSchema = z.object({
   category: z.enum(["coherence", "repetition", "pacing", "voice", "engagement", "logic"]),
   evidence: z.string().trim().min(1),
   fixSuggestion: z.string().trim().min(1),
+  calibration: reviewEvidenceCalibrationSchema.optional(),
 });
 
 export const reviewSchema = llmGenerateSchema.extend({

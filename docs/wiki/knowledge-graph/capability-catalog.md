@@ -37,6 +37,7 @@ See [Chapter production chain](../workflows/chapter-production-chain.md),
 | Capability | Entry point | Owner |
 | --- | --- | --- |
 | Knowledge and retrieval | `/knowledge` | knowledge and RAG services |
+| Optional research sources and adopted findings | Knowledge document details | knowledge research module; [workflow](../workflows/knowledge-research-adoption.md) |
 | Book analysis | `/book-analysis` | book-analysis services |
 | Style engine | `/style-engine` | style engine and writing profiles |
 | Anti-AI rules | `/anti-ai-rules` | style bindings and rule assets |

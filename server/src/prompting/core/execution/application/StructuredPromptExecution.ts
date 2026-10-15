@@ -1,3 +1,4 @@
+import { executionSignal } from "../../../../platform/db";
 import { type BaseMessage, type BaseMessageChunk } from "@langchain/core/messages";
 import { getResolvedLLMClientOptionsFromInstance } from "../../../../llm/factory";
 import { parseStructuredLlmRawContentDetailed, type StructuredInvokeResult, type PreparedStructuredInvocation } from "../../../../llm/structuredInvoke";
@@ -211,6 +212,7 @@ async function executeRenderedStructuredPrompt<I, O, R = O>(
   input: RenderedStructuredPromptExecution<I, O, R>,
   preparedInvocation?: PreparedStructuredInvocation,
 ): Promise<PromptRunResult<O>> {
+  input = { ...input, options: { ...input.options, signal: executionSignal(input.options?.signal) } };
   const prepared = input;
   const messages = prepared.messages;
   const outputSchema = input.asset.outputSchema!;
@@ -308,6 +310,7 @@ export async function streamStructuredPrompt<I, O, R = O>(input: {
   contextBlocks?: Parameters<typeof selectContextBlocks>[0];
   options?: PromptExecutionOptions;
 }): Promise<PromptStreamRunResult<O>> {
+  input = { ...input, options: { ...input.options, signal: executionSignal(input.options?.signal) } };
   if (input.asset.mode !== "structured" || !input.asset.outputSchema) {
     throw new Error(`Prompt asset ${input.asset.id}@${input.asset.version} is not a structured prompt.`);
   }

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import type {
+  ChapterSaveConflict,
   ChapterEditorDiagnosticCard,
   ChapterEditorOperation,
   ChapterEditorRecommendedTask,
@@ -8,6 +9,8 @@ import type {
   ChapterEditorTargetRange,
 } from "@novelfoundry/shared/types/novel";
 import { createNovelSnapshot, previewChapterAiRevision, updateNovelChapter } from "@/api/novel";
+import { getChapterSaveConflict } from "@/api/novel/chapters";
+import ChapterSaveConflictPanel from "./ChapterSaveConflictPanel";
 import { queryKeys } from "@/api/queryKeys";
 import { toast } from "@/components/ui/toast";
 import { useLLMStore } from "@/store/llmStore";
@@ -35,6 +38,7 @@ import {
   createChapterDraft,
   editChapterDraft,
   receiveChapterContent,
+  resolveChapterConflict,
 } from "./domain/chapterDraft";
 
 const EMPTY_SESSION: ChapterEditorSessionState = {
@@ -86,8 +90,9 @@ export default function ChapterEditorShell(props: ChapterEditorShellProps) {
   const lastPreviewRequestRef = useRef<ReturnType<typeof buildAiRevisionRequest> | null>(null);
   const normalizedChapterContent = useMemo(() => normalizeChapterContent(chapter?.content ?? ""), [chapter?.content]);
 
-  const [draft, setDraft] = useState(() => createChapterDraft(normalizedChapterContent));
+  const [draft, setDraft] = useState(() => createChapterDraft(normalizedChapterContent, chapter?.content ?? null));
   const { content: contentDraft, savedContent, status: saveStatus } = draft;
+  const [saveConflict, setSaveConflict] = useState<ChapterSaveConflict | null>(null);
   const mountedRef = useRef(true);
   useEffect(() => {
     mountedRef.current = true;
@@ -101,10 +106,12 @@ export default function ChapterEditorShell(props: ChapterEditorShellProps) {
   const [selectedDiagnosticId, setSelectedDiagnosticId] = useState<string | null>(null);
 
   useEffect(() => {
+    if (saveConflict) return;
     const next = receiveChapterContent(
       draft,
       normalizedChapterContent,
       normalizeChapterContent(draft.savedContent) === normalizedChapterContent,
+      chapter?.content ?? null,
     );
     if (next === draft) return;
     setDraft(next);
@@ -115,7 +122,7 @@ export default function ChapterEditorShell(props: ChapterEditorShellProps) {
     setRevisionInstruction("");
     setRevisionScope("selection");
     lastPreviewRequestRef.current = null;
-  }, [draft, normalizedChapterContent]);
+  }, [draft, normalizedChapterContent, chapter?.content, saveConflict]);
 
   useEffect(() => {
     if (!workspace) {
@@ -162,23 +169,24 @@ export default function ChapterEditorShell(props: ChapterEditorShellProps) {
   };
 
   const saveMutation = useMutation({
-    mutationFn: async (nextContent: string) => {
+    mutationFn: async (write: { content: string; expectedContent: string | null }) => {
       if (!chapter) {
         throw new Error("当前未选中章节。");
       }
-      return updateNovelChapter(novelId, chapter.id, { content: nextContent });
+      return updateNovelChapter(novelId, chapter.id, write);
     },
     onMutate: () => {
       setDraft((current) => ({ ...current, status: "saving" }));
     },
-    onSuccess: async (_response, nextContent) => {
-      if (mountedRef.current) setDraft((current) => acknowledgeChapterSave(current, nextContent));
+    onSuccess: async (_response, write) => {
+      if (mountedRef.current) setDraft((current) => acknowledgeChapterSave(current, write.content));
       await invalidateChapterQueries();
       if (mountedRef.current) toast.success("章节正文已保存。");
     },
     onError: (error) => {
       if (!mountedRef.current) return;
       setDraft((current) => ({ ...current, status: "error" }));
+      setSaveConflict(getChapterSaveConflict(error));
       toast.error(error instanceof Error ? error.message : "章节保存失败。");
     },
   });
@@ -245,24 +253,26 @@ export default function ChapterEditorShell(props: ChapterEditorShellProps) {
   });
 
   const acceptMutation = useMutation({
-    mutationFn: async () => {
+    mutationFn: async (write: { content: string; expectedContent: string | null; localBefore: string }) => {
       if (!chapter || !activeCandidate || !session.targetRange) {
         throw new Error("当前没有可应用的候选版本。");
       }
       const label = `chapter-editor:${chapter.order}:${session.scope}:${Date.now()}`;
-      const nextContent = applyCandidateToContent(contentDraft, session.targetRange, activeCandidate.content);
+      const nextContent = write.content;
       await createNovelSnapshot(novelId, {
         triggerType: "manual",
         label,
       });
       await updateNovelChapter(novelId, chapter.id, {
         content: nextContent,
+        expectedContent: write.expectedContent,
       });
       return nextContent;
     },
-    onSuccess: async (nextContent) => {
+    onMutate: () => { setDraft((current) => ({ ...current, status: "saving" })); },
+    onSuccess: async (nextContent, write) => {
       if (mountedRef.current) {
-        setDraft((current) => acknowledgeChapterSave({ ...current, content: nextContent }, nextContent));
+        setDraft((current) => acknowledgeChapterSave({ ...current, content: current.content === write.localBefore ? nextContent : current.content }, nextContent));
         setSession(EMPTY_SESSION);
         setRevisionInstruction("");
       }
@@ -270,7 +280,10 @@ export default function ChapterEditorShell(props: ChapterEditorShellProps) {
       if (mountedRef.current) toast.success("已应用候选版本，并创建 AI 修改前快照。");
     },
     onError: (error) => {
-      if (mountedRef.current) toast.error(error instanceof Error ? error.message : "应用候选版本失败。");
+      if (!mountedRef.current) return;
+      setDraft((current) => ({ ...current, status: "error" }));
+      setSaveConflict(getChapterSaveConflict(error));
+      toast.error(error instanceof Error ? error.message : "应用候选版本失败。");
     },
   });
 
@@ -422,6 +435,19 @@ export default function ChapterEditorShell(props: ChapterEditorShellProps) {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-4">
+      {saveConflict && <ChapterSaveConflictPanel
+        localContent={contentDraft}
+        conflict={saveConflict}
+        onResolve={(keepLocal) => {
+          setDraft((current) => resolveChapterConflict(current,
+            normalizeChapterContent(saveConflict.currentContent ?? ""), saveConflict.currentContent, keepLocal));
+          setSaveConflict(null);
+          setSession(EMPTY_SESSION);
+          setSelection(null);
+          setSelectionToolbarPosition(null);
+          lastPreviewRequestRef.current = null;
+        }}
+      />}
       <div className={`grid min-h-0 flex-1 gap-4 overflow-hidden ${gridClassName}`}>
         <ChapterEditorSidebar
           chapter={chapter}
@@ -430,11 +456,16 @@ export default function ChapterEditorShell(props: ChapterEditorShellProps) {
           wordCount={wordCount}
           saveStatusLabel={headerSaveLabel}
           isDirty={isDirty}
-          isSaving={saveMutation.isPending}
+          isSaving={saveMutation.isPending || acceptMutation.isPending}
+          saveBlocked={Boolean(saveConflict)}
           selectedDiagnosticId={selectedDiagnosticId}
           onBack={onBack}
           onOpenVersionHistory={onOpenVersionHistory}
-          onSave={() => saveMutation.mutate(contentDraft)}
+          onSave={() => {
+            if (!saveConflict && !saveMutation.isPending && !acceptMutation.isPending) {
+              saveMutation.mutate({ content: contentDraft, expectedContent: draft.sourceContent });
+            }
+          }}
           onFocusDiagnostic={handleFocusDiagnostic}
           onRunDiagnostic={handleRunDiagnostic}
         />
@@ -442,7 +473,7 @@ export default function ChapterEditorShell(props: ChapterEditorShellProps) {
         <div className="relative min-h-0 overflow-hidden">
           <ChapterTextEditor
             value={contentDraft}
-            readOnly={session.status !== "idle"}
+            readOnly={session.status !== "idle" || acceptMutation.isPending}
             onChange={(next) => {
               setDraft((current) => editChapterDraft(current, next));
             }}
@@ -481,6 +512,7 @@ export default function ChapterEditorShell(props: ChapterEditorShellProps) {
             currentTargetDescription={currentTargetDescription}
             isGenerating={previewMutation.isPending}
             isApplying={acceptMutation.isPending}
+            applyBlocked={saveMutation.isPending || Boolean(saveConflict)}
             onInstructionChange={setRevisionInstruction}
             onScopeChange={setRevisionScope}
             onRunRecommended={handleRunRecommended}
@@ -488,7 +520,14 @@ export default function ChapterEditorShell(props: ChapterEditorShellProps) {
             onRunFreeform={handleRunFreeform}
             onSelectCandidate={(candidateId) => setSession((current) => ({ ...current, activeCandidateId: candidateId }))}
             onChangeViewMode={(mode) => setSession((current) => ({ ...current, viewMode: mode }))}
-            onAccept={() => acceptMutation.mutate()}
+            onAccept={() => {
+              if (saveConflict || saveMutation.isPending || acceptMutation.isPending || !activeCandidate || !session.targetRange) return;
+              acceptMutation.mutate({
+                content: applyCandidateToContent(contentDraft, session.targetRange, activeCandidate.content),
+                localBefore: contentDraft,
+                expectedContent: draft.sourceContent,
+              });
+            }}
             onReject={handleReject}
             onRegenerate={handleRegenerate}
           />

@@ -87,6 +87,8 @@ export interface UpdateNovelInput {
   structuredOutline?: string | null;
 }
 
+export type ChapterUpdateInput = Partial<ChapterInput> & Partial<import("@novelfoundry/shared/types/novel").ChapterContentWritePrecondition>;
+
 export interface ChapterInput {
   title: string;
   order: number;
