@@ -579,3 +579,50 @@ test("chapter artifact delta schema normalizes enum drift from artifact extracti
   assert.equal(parsed.payoffDeltas[0].scopeType, "book");
   assert.equal(parsed.syncPlan.characterDynamics, "write");
 });
+
+
+function artifactWithExtractedState(foreshadowStates = [], confidence = 0.8) {
+  return {
+    summary: "程秩决定先观察守卫。",
+    stateDeltas: { foreshadowStates },
+    characterMindDeltas: [{
+      characterName: "程秩",
+      currentInterpretation: "守卫部署仍不明确。",
+      evidence: ["他停在门外观察。"],
+      confidence,
+    }],
+    syncPlan: { reason: "记录本章变化。" },
+    confidence: 0.9,
+  };
+}
+
+test("artifact extraction accepts numeric representations without guessing confidence", () => {
+  for (const value of [0, 1, "0", "1", " 0.8 ", "8e-1"]) {
+    const parsed = chapterArtifactDeltaOutputSchema.parse(artifactWithExtractedState([], value));
+    assert.equal(parsed.characterMindDeltas[0].confidence, Number(value));
+  }
+  for (const value of ["", " ", "80%", "high", "0x1", "true", "null", "[]", "1e999", true, null, [], -0.1, 1.1]) {
+    assert.equal(chapterArtifactDeltaOutputSchema.safeParse(artifactWithExtractedState([], value)).success, false);
+  }
+  const missing = artifactWithExtractedState();
+  delete missing.characterMindDeltas[0].confidence;
+  assert.equal(chapterArtifactDeltaOutputSchema.safeParse(missing).success, false);
+});
+
+test("artifact clue aliases preserve full identities and canonical title precedence", () => {
+  const prefix = "守卫交班时留下的线索".repeat(20);
+  const rows = [
+    { title: " 正门钥匙 ", name: "忽略这个别名" },
+    { foreshadowTitle: prefix + "甲" },
+    { name: prefix + "乙" },
+    { title: " ", label: "门后的脚步声" },
+  ];
+  const parsed = chapterArtifactDeltaOutputSchema.parse(artifactWithExtractedState(rows));
+  assert.deepEqual(parsed.stateDeltas.foreshadowStates.map((item) => item.title), [
+    "正门钥匙", prefix + "甲", prefix + "乙", "门后的脚步声",
+  ]);
+  assert.equal(rows[1].title, undefined);
+  for (const invalid of [{}, { summary: "只有摘要" }, { title: 12, name: "不掩盖类型错误" }, { label: " " }]) {
+    assert.equal(chapterArtifactDeltaOutputSchema.safeParse(artifactWithExtractedState([invalid])).success, false);
+  }
+});

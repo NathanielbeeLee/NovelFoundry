@@ -61,7 +61,7 @@ export default function NovelChapterEdit() {
   return (
     <div className="flex h-full min-h-0 flex-col gap-4">
       <ChapterEditorShell
-        key={`${chapter.id}:${chapter.updatedAt}`}
+        key={`${id}:${chapter.id}`}
         novelId={id}
         chapter={chapter}
         workspace={chapterEditorWorkspaceQuery.data?.data ?? null}

@@ -13,7 +13,7 @@ export const styleDetectionPrompt: PromptAsset<
   z.infer<typeof styleDetectionPayloadSchema>
 > = {
   id: "style.detection",
-  version: "v3",
+  version: "v4",
   taskType: "planner",
   mode: "structured",
   language: "zh",
@@ -78,7 +78,7 @@ export const styleDetectionPrompt: PromptAsset<
       "2. ruleType：必须清楚区分来源类别，应对应写法规则、角色表达规则或反AI规则中的一类。",
       "3. severity：必须体现问题严重程度，使用稳定、清晰、可比较的等级表述。",
       "4. issueCategory：表达层偏差用 style_expression；只有已经影响章节结构或事件推进时才用 story_structure。",
-      "5. excerpt：必须摘取文本中的具体问题片段，尽量短、准、能定位；不要整段复制。",
+      "5. excerpt：必须是待检测文本中连续、逐字一致的具体问题片段，保留原有标点和换行；不得转述、拼接或用省略号替代中间内容。重复出现的片段可引用其中一处，不要求唯一定位；尽量短、准，不要整段复制。",
       "6. reason：必须具体说明这段 excerpt 为什么违规，不能只复读规则名。",
       "7. suggestion：必须给出可执行的修改方向，直接说明应如何调整表达、人物、节奏或技法；禁止输出完整可复制替换句，禁止使用“例如：……”后接成段正文。",
       "8. canAutoRewrite：表示该条问题是否适合自动改写修复，必须与问题性质一致。",
@@ -105,6 +105,16 @@ export const styleDetectionPrompt: PromptAsset<
       input.content,
     ].join("\n")),
   ],
+  postValidate: (rawOutput, input) => {
+    const output = styleDetectionPayloadSchema.parse(rawOutput);
+    // Check the AI's quoted evidence, without deciding whether the prose is a violation.
+    for (const violation of output.violations) {
+      if (!input.content.includes(violation.excerpt)) {
+        throw new Error("写法检测引用不在待检测正文中，请重新检测；问题片段须逐字引用原文。");
+      }
+    }
+    return output;
+  },
 };
 
 export const styleRecommendationPrompt: PromptAsset<

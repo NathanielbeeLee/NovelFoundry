@@ -262,34 +262,17 @@ are retained in [NOTICE](NOTICE).
 
 ## Latest update
 
-### 2026-10-01
+### 2026-10-15
 
-- Writing profiles guide planning, drafting, review, and rewriting through
-  reusable writing techniques, reducing carry-over of reference names and
-  identities into a new novel.
-- A timed-out or interrupted chapter repair keeps saved prose and records
-  follow-up work so the book can continue. Cancelling stops review and repair.
-- Director recovery shows the current step status after a successful retry
-  and pauses when the chapter plan explicitly needs reconsideration.
-- The workspace loads editing, graph, and Markdown tools when their pages need
-  them, reducing the compressed JavaScript required at startup by about 30%.
-- Prompt Workbench lists comic visual-fact extraction so you can inspect the
-  instructions that help keep characters, places, props, and states consistent
-  across episodes.
-- Long novels receive more room for complete volume strategies, with concise
-  planning fields that reduce the risk of an unfinished result.
-- Kimi K2/K3 models use compatible temperature settings through custom
-  endpoints as well as the Kimi preset.
-- Chapter writing, review, and repair retain book constraints, protected
-  secrets, and edit boundaries when reference context needs shortening.
-- Chapter acceptance reviews use the current story context and model settings
-  when reusing a result. An unavailable review remains eligible for a later try.
-- Creative Hub distinguishes a saved reply, an approval request, a failed task,
-  and stopped reception. Interrupted replies keep received text and offer a
-  task-state refresh before you continue.
-- Style Engine and Anti-AI Rules rewrite previews compare the revision with
-  the original for changes to story facts, relationships, order, clues, and
-  uncertainty. Evidence and unfinished-check warnings help you keep the
-  original until you choose a revision.
+- Chapter editing keeps new text entered while a save is in progress, including
+  when the saved chapter refreshes. Save acknowledgements preserve the editor's
+  undo history.
+- Writing checks verify that quoted problem passages occur in your manuscript;
+  an unsupported quotation asks for another check instead of producing
+  misleading rewrite advice.
+- Chapter follow-up processing accepts unambiguous variations in AI field
+  formatting while preserving complete clues and rejecting uncertain values.
+- Conflicting volume or chapter positions produce a clear correction message
+  before the active plan is written.
 
 [Full update history](docs/releases/release-notes.md).

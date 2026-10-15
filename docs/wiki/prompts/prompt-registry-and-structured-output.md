@@ -23,6 +23,22 @@ policy, slots, and output schema when structured output is required.
 - Official prompt versions are code-owned. Database overrides are scoped,
   versioned, and reversible; restoring official defaults is an explicit action.
 
+## Chapter artifact representation boundaries
+
+`novel.chapter.artifact_delta.extract@v3` accepts JSON numeric strings for
+character-mind confidence only when the existing required 0..1 number schema
+accepts the decoded value. Missing confidence, percentages, labels, booleans,
+non-finite values and out-of-range values remain validation failures. Do not
+invent a default confidence or silently discard the affected extraction.
+
+Foreshadowing state accepts explicit `foreshadowTitle`, `name` or `label` when
+`title` is absent or blank. A valid canonical title takes precedence; a
+malformed explicitly typed title remains an error. Keep the full supplied clue
+identity: do not truncate it, synthesize a placeholder, or treat a summary as a
+title. This is bounded representation normalization of structured AI output,
+not a semantic inference or a second decision path. Existing source freshness,
+canonical transactions and chapter quality-debt rules still own persistence.
+
 ## Verification
 
 A structured prompt check should confirm schema validity, post-validation,
@@ -49,6 +65,14 @@ When rewriting, retain the event sequence, character relationships, point of
 view, uncertainty, and established world facts. Fix the affected span with the
 smallest useful edit. Do not invent details to make prose seem concrete or
 flatten an intentional literary voice into generic conversational language.
+
+`style.detection@v4` requires every finding's excerpt to occur verbatim in the
+submitted manuscript. A missing or paraphrased quote fails post-validation;
+never remove that finding and return a clean assessment. The check only grounds
+the AI's evidence: prose quality, narrative function and rewrite suitability
+remain structured AI decisions. Detection failures remain explicit errors and
+can be retried by the user rather than becoming a zero-risk result.
+
 Style findings remain local chapter guidance; they do not trigger a book-level
 replan unless the structured workflow decision explicitly requires one.
 

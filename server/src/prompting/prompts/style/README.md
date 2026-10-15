@@ -29,3 +29,12 @@ is unfinished, not successful. JSON repair and semantic retries are disabled;
 the rewrite application owns the complete-pair size guard and deadline. It does
 not rewrite prose, adopt candidates, or decide global director status. See the
 [preview boundary](../../../services/styleEngine/rewrite/README.md).
+
+`style.detection@v4` validates each finding's excerpt against the submitted
+manuscript after the AI judges its prose. The quote must be a nonempty,
+contiguous literal substring, including its internal punctuation and line
+breaks; repeated occurrences are allowed because the contract has no position
+field. Ungrounded findings fail the existing prompt execution instead of being
+filtered into a misleading clean report. No extra semantic retry is added.
+This validates evidence integrity, not literary quality, and does not create
+a global director gate.

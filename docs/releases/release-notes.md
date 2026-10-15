@@ -6,6 +6,19 @@ below; their source evidence is retained in local maintainer archives.
 
 ## History
 
+### 2026-10-15
+
+- Chapter editing keeps new text entered while a save is in progress, including
+  when the saved chapter refreshes. Save acknowledgements preserve the editor's
+  undo history.
+- Writing checks verify that quoted problem passages occur in your manuscript;
+  an unsupported quotation asks for another check instead of producing
+  misleading rewrite advice.
+- Chapter follow-up processing accepts unambiguous variations in AI field
+  formatting while preserving complete clues and rejecting uncertain values.
+- Conflicting volume or chapter positions produce a clear correction message
+  before the active plan is written.
+
 ### 2026-10-01
 
 - Writing profiles guide planning, drafting, review, and rewriting through

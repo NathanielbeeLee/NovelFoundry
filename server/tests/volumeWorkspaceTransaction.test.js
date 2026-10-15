@@ -420,3 +420,92 @@ test("persistActiveVolumeWorkspace writes explicit user conflict anchors", async
   assert.equal(updateCall[1].data.conflictLevel, 88);
   assert.equal(updateCall[1].data.conflictLevelSource, "user");
 });
+
+
+test("persistActiveVolumeWorkspace rejects duplicate final positions before accessing active rows", async () => {
+  const { persistActiveVolumeWorkspace } = require("../dist/services/novel/volume/volumeWorkspacePersistence.js");
+  const tx = new Proxy({}, {
+    get() { throw new Error("Invalid workspace must not access active rows"); },
+  });
+  const duplicateVolumes = createVolumeWorkspaceDocument();
+  duplicateVolumes.volumes.push({ ...duplicateVolumes.volumes[0], id: "volume-2", title: "第二卷", chapters: [] });
+  await assert.rejects(
+    persistActiveVolumeWorkspace(tx, "novel-1", duplicateVolumes, "version-1"),
+    (error) => error.statusCode === 400 && /相同的卷序号 1/.test(error.message),
+  );
+
+  const duplicateChapters = createVolumeWorkspaceDocument({ chapterId: "canonical-1" });
+  duplicateChapters.volumes[0].chapters.push({
+    ...duplicateChapters.volumes[0].chapters[0], id: "chapter-2", title: "另一份规划",
+  });
+  await assert.rejects(
+    persistActiveVolumeWorkspace(tx, "novel-1", duplicateChapters, "version-1"),
+    (error) => error.statusCode === 400 && /相同的章节序号 1/.test(error.message),
+  );
+});
+
+test("persistActiveVolumeWorkspace scopes chapter positions to their volume", async () => {
+  const { persistActiveVolumeWorkspace } = require("../dist/services/novel/volume/volumeWorkspacePersistence.js");
+  const document = createVolumeWorkspaceDocument();
+  document.volumes.push({
+    ...document.volumes[0], id: "volume-2", sortOrder: 2, title: "第二卷",
+    chapters: [{ ...document.volumes[0].chapters[0], id: "chapter-2", volumeId: "volume-2" }],
+  });
+  const created = [];
+  const tx = {
+    volumePlan: { findMany: async () => [], create: async () => ({}) },
+    volumeChapterPlan: { create: async ({ data }) => { created.push(data); return data; } },
+    novel: { update: async () => ({}) },
+    storyPlan: { deleteMany: async () => ({}), findFirst: async () => null, create: async () => ({}) },
+  };
+  await persistActiveVolumeWorkspace(tx, "novel-1", document, "version-1");
+  assert.deepEqual(created.map(({ volumeId, chapterOrder }) => ({ volumeId, chapterOrder })), [
+    { volumeId: "volume-1", chapterOrder: 1 },
+    { volumeId: "volume-2", chapterOrder: 1 },
+  ]);
+});
+
+
+test("canonical hydration cannot persist two plans linked to the same chapter position", async () => {
+  // Hydration does not use the event or ledger adapters; keep their app bootstrap outside this fixture.
+  const adapters = [
+    [require.resolve("../dist/events/index.js"), { novelEventBus: {} }],
+    [require.resolve("../dist/services/payoff/PayoffLedgerSyncService.js"), { payoffLedgerSyncService: {} }],
+  ];
+  const savedModules = adapters.map(([modulePath]) => [modulePath, require.cache[modulePath]]);
+  for (const [modulePath, exports] of adapters) {
+    require.cache[modulePath] = { id: modulePath, filename: modulePath, loaded: true, exports };
+  }
+  const serviceModulePath = require.resolve("../dist/services/novel/volume/workspace/infrastructure/VolumeWorkspacePersistenceService.js");
+  const savedServiceModule = require.cache[serviceModulePath];
+  let VolumeWorkspacePersistenceService;
+  try {
+    ({ VolumeWorkspacePersistenceService } = require(serviceModulePath));
+  } finally {
+    if (savedServiceModule) require.cache[serviceModulePath] = savedServiceModule;
+    else delete require.cache[serviceModulePath];
+    for (const [modulePath, original] of savedModules) {
+      if (original) require.cache[modulePath] = original;
+      else delete require.cache[modulePath];
+    }
+  }
+  const { persistActiveVolumeWorkspace } = require("../dist/services/novel/volume/volumeWorkspacePersistence.js");
+  const document = createVolumeWorkspaceDocument({ chapterId: "canonical-1" });
+  document.volumes[0].chapters.push({
+    ...document.volumes[0].chapters[0], id: "chapter-2", chapterOrder: 2,
+  });
+  const originalFindMany = prisma.chapter.findMany;
+  prisma.chapter.findMany = async () => [{ id: "canonical-1", order: 1, title: "关联正文", expectation: "正文任务" }];
+  try {
+    const service = new VolumeWorkspacePersistenceService();
+    const hydrated = await service.hydrateCanonicalChapterFields("novel-1", document);
+    assert.deepEqual(hydrated.document.volumes[0].chapters.map(chapter => chapter.chapterOrder), [1, 1]);
+    const tx = new Proxy({}, { get() { throw new Error("Invalid hydrated workspace must not access active rows"); } });
+    await assert.rejects(
+      persistActiveVolumeWorkspace(tx, "novel-1", hydrated.document, "version-1"),
+      (error) => error.statusCode === 400 && /相同的章节序号 1/.test(error.message),
+    );
+  } finally {
+    prisma.chapter.findMany = originalFindMany;
+  }
+});

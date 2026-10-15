@@ -327,13 +327,35 @@ const chapterArtifactInformationStateSchema = z.object({
   summary: nullableText,
 });
 
-const chapterArtifactForeshadowStateSchema = z.object({
+// Normalize representation only; ambiguous values still require AI repair.
+const chapterArtifactMindDeltaSchema = characterMindDeltaSchema.extend({
+  confidence: z.preprocess((value) => {
+    if (typeof value !== "string") return value;
+    try {
+      const decoded: unknown = JSON.parse(value);
+      return typeof decoded === "number" ? decoded : value;
+    } catch {
+      return value;
+    }
+  }, characterMindDeltaSchema.shape.confidence),
+});
+
+const chapterArtifactForeshadowStateSchema = z.preprocess((value) => {
+  if (!isRecord(value) || (typeof value.title === "string" && value.title.trim())) {
+    return value;
+  }
+  // A malformed explicit title must not be hidden by an unrelated alias.
+  if (value.title != null && typeof value.title !== "string") return value;
+  const suppliedTitle = readString(value, ["foreshadowTitle", "name", "label"]);
+  // Summary is not an identity: do not invent or truncate a clue title.
+  return suppliedTitle === undefined ? value : { ...value, title: suppliedTitle };
+}, z.object({
   title: z.string().trim().min(1),
   summary: nullableText,
   status: z.string().trim().min(1).default("setup"),
   setupChapterId: z.preprocess(normalizeChapterReferenceText, nullableText),
   payoffChapterId: z.preprocess(normalizeChapterReferenceText, nullableText),
-});
+}));
 
 export const chapterArtifactDeltaStateSchema = z.object({
   summary: z.string().trim().optional().nullable(),
@@ -393,7 +415,7 @@ export const chapterArtifactDeltaOutputSchema = z.object({
   factionUpdates: z.array(chapterArtifactFactionUpdateSchema).max(6).default([]),
   characterCandidates: z.array(chapterArtifactCharacterCandidateSchema).max(4).default([]),
   characterKnowledgeStates: z.array(chapterArtifactCharacterKnowledgeStateSchema).max(8).default([]),
-  characterMindDeltas: z.array(characterMindDeltaSchema).max(4).default([]),
+  characterMindDeltas: z.array(chapterArtifactMindDeltaSchema).max(4).default([]),
   characterDialogueInfluenceResolutions: z.array(characterDialogueInfluenceResolutionSchema).max(4).default([]),
   syncPlan: chapterArtifactDeltaSyncPlanSchema,
   confidence: z.number().min(0).max(1),
@@ -539,7 +561,7 @@ export const chapterArtifactDeltaPrompt: PromptAsset<
   ChapterArtifactDeltaOutput
 > = {
   id: "novel.chapter.artifact_delta.extract",
-  version: "v2",
+  version: "v3",
   taskType: "fact_extraction",
   mode: "structured",
   language: "zh",
@@ -595,6 +617,7 @@ export const chapterArtifactDeltaPrompt: PromptAsset<
       "22. syncPlan.stateSnapshot、characterResources、characterDynamics 只能是 skip 或 write；只有 payoffLedger 可以是 skip、delta 或 full_reconcile。",
       "23. 输出必须保持增量和精简：角色状态最多 8 条、关系状态最多 8 条、信息状态最多 12 条、伏笔状态最多 12 条、payoffDeltas 最多 12 条；同一事实不要在多个数组重复展开。",
       "24. 每个 summary、reason、evidence 只保留完成后续一致性判断所需的最短证据，不复述整段正文，不输出分析过程。",
+      "25. characterMindDeltas 每项必须给出 0 到 1 的数字 confidence；不要用字符串、百分比或模糊评价代替。stateDeltas.foreshadowStates 每项必须填写非空 title，用完整的线索名称区分不同伏笔。",
     ].join("\n")),
     new HumanMessage([
       `小说：${input.novelTitle}`,

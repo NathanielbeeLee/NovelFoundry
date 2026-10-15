@@ -2,6 +2,7 @@ import type { VolumeChapterPlan, VolumePlan, VolumePlanDocument } from "@novelfo
 import type { Prisma } from "@prisma/client";
 import { prisma } from "../../../db/prisma";
 import { withSqliteRetry } from "../../../db/sqliteRetry";
+import { AppError } from "../../../middleware/errorHandler";
 import {
   buildFallbackVolumesFromLegacy,
   type LegacyVolumeSource,
@@ -394,12 +395,38 @@ async function parkExistingVolumeWorkspaceRows(
   }
 }
 
+function validateWorkspaceOrderUniqueness(document: VolumePlanDocument): void {
+  const titlesByOrder = new Map<number, string>();
+  for (const volume of document.volumes) {
+    if (titlesByOrder.has(volume.sortOrder)) {
+      throw new AppError(
+        `《${titlesByOrder.get(volume.sortOrder)}》与《${volume.title}》使用了相同的卷序号 ${volume.sortOrder}，请检查卷顺序后保存。`,
+        400,
+      );
+    }
+    titlesByOrder.set(volume.sortOrder, volume.title);
+    const chapterTitlesByOrder = new Map<number, string>();
+    for (const chapter of volume.chapters) {
+      if (chapterTitlesByOrder.has(chapter.chapterOrder)) {
+        throw new AppError(
+          `《${volume.title}》的《${chapterTitlesByOrder.get(chapter.chapterOrder)}》与《${chapter.title}》使用了相同的章节序号 ${chapter.chapterOrder}，请检查章节顺序与正文关联后保存。`,
+          400,
+        );
+      }
+      chapterTitlesByOrder.set(chapter.chapterOrder, chapter.title);
+    }
+  }
+}
+
 export async function persistActiveVolumeWorkspace(
   tx: Prisma.TransactionClient,
   novelId: string,
   document: VolumePlanDocument,
   sourceVersionId: string | null,
 ): Promise<void> {
+  // Canonical chapter hydration can change orders after draft normalization.
+  // Validate the final document before parking or writing active workspace rows.
+  validateWorkspaceOrderUniqueness(document);
   const existingVolumes = await tx.volumePlan.findMany({
     where: { novelId },
     select: {

@@ -178,6 +178,9 @@ export default function ChapterTextEditor(props: ChapterTextEditorProps) {
   );
 
   useEffect(() => {
+    // A controlled echo of an edit must keep the live editor and its undo stack,
+    // including unfinished paragraphs and trailing spaces.
+    if (normalizeEditorText(value) === internalText) return;
     const nextValue = normalizeChapterContent(value);
     if (nextValue === internalText) {
       return;
