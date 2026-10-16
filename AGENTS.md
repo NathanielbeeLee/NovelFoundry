@@ -199,6 +199,14 @@ These areas have the highest priority for wiki accumulation:
 - Before each phase commit, inspect the Git scope and follow the README Release Notes Workflow when the phase has user-facing impact. If the diff is purely internal, document that release notes were intentionally skipped.
 - For changes that touch cross-stage workflows, shared runtime/prompting/context contracts, automatic director chains, chapter execution chains, data migration behavior, or other major links, stay on `main` and increase the verification depth instead of creating another branch.
 
+## Repository Commit Identity
+
+- Use `gpd` for both the Git author name and committer name in this repository. Do not create commits under `shenze`.
+- Set the identity in repository-local Git configuration; do not change the user's global identity or another repository.
+- Preserve the configured email address unless the user provides a replacement. Do not invent an email address.
+- Check both effective identities before committing, including environment overrides.
+- Historical identity changes require a verified recoverable Git backup and explicit authorization. Use an exact `--force-with-lease` expectation when synchronizing an authorized rewrite.
+
 ## Desktop Packaging Upload Rules
 
 - Public desktop package upload to GitHub Releases is allowed only when the release version is driven by `desktop/package.json` and the Git tag is exactly `vX.Y.Z`.
