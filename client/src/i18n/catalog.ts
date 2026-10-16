@@ -5,7 +5,7 @@ export const messages = {
   "en-US": {
     ...creationStudioMessages["en-US"],
     ...directorSetupMessages["en-US"],
-    "brand.name": "NovelFoundry", "brand.subtitle": "AI Long-Form Fiction Production System",
+    "brand.name": "NovelFoundry", "brand.subtitle": "From idea to a finished novel",
     "language.switchToEnglish": "Switch to English", "language.switchToChinese": "切换为中文",
     "language.english": "English", "language.chinese": "中文",
     "nav.group.creation": "Creation", "nav.group.assets": "Assets", "nav.group.system": "System",
@@ -60,7 +60,7 @@ export const messages = {
   "zh-CN": {
     ...creationStudioMessages["zh-CN"],
     ...directorSetupMessages["zh-CN"],
-    "brand.name": "NovelFoundry", "brand.subtitle": "AI 长篇小说生产系统",
+    "brand.name": "NovelFoundry", "brand.subtitle": "从灵感到完整小说",
     "language.switchToEnglish": "Switch to English", "language.switchToChinese": "切换为中文",
     "language.english": "English", "language.chinese": "中文",
     "nav.group.creation": "创作", "nav.group.assets": "资产", "nav.group.system": "系统",

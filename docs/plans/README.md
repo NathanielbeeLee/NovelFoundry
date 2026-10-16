@@ -8,6 +8,7 @@ superseded plans with recovery value belong in local maintainer archives.
 ## Current plan
 
 - [NovelFoundry optimization backlog](./optimization-backlog.md)
+- [Workspace layout review and priorities](./workspace-layout-review.md)
 
 Completed or superseded plans are removed from the maintained documentation
 tree. Consult maintainer archives when older evidence is required; no

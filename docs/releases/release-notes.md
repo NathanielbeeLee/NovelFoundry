@@ -6,6 +6,13 @@ below; their source evidence is retained in local maintainer archives.
 
 ## History
 
+### 2026-10-16
+
+- NovelFoundry branding is consistent across the browser title, desktop startup
+  screens, and public documentation navigation.
+- Product screenshots show the current chapter editor, story-direction selection,
+  and Creative Hub with fictional example projects.
+
 ### 2026-10-15
 
 - Chapter editing keeps new text entered while a save is in progress, including

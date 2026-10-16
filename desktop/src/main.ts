@@ -229,7 +229,7 @@ function createSplashHtml(): string {
         http-equiv="Content-Security-Policy"
         content="default-src 'none'; style-src 'unsafe-inline'; img-src data:"
       />
-      <title>AI 小说创作工作台</title>
+      <title>NovelFoundry</title>
       <style>
         :root {
           color-scheme: dark;
@@ -302,8 +302,8 @@ function createSplashHtml(): string {
     <body>
       <main class="panel">
         ${brandMark}
-        <div class="title">AI 小说创作工作台</div>
-        <p class="subtitle">正在准备桌面启动壳和打包后的本地写作引擎。</p>
+        <div class="title">NovelFoundry</div>
+        <p class="subtitle">正在打开你的创作空间。</p>
         <div class="meter"><span></span></div>
       </main>
     </body>

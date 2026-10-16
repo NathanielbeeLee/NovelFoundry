@@ -116,8 +116,8 @@ develop before the director prepares the book.
 
 </details>
 
-These example projects use the Chinese interface. Layouts and branding may
-vary by build; see [language coverage](#faq).
+These screenshots show the current application with fictional example project
+data in the Chinese interface. See [language coverage](#faq).
 
 ## Your first novel
 
@@ -322,28 +322,11 @@ are retained in [NOTICE](NOTICE).
 
 ## Latest update
 
-### 2026-10-15
+### 2026-10-16
 
-- Chapter editing keeps new text entered while a save is in progress, including
-  when the saved chapter refreshes. Save acknowledgements preserve the editor's
-  undo history.
-- Writing checks verify that quoted problem passages occur in your manuscript;
-  an unsupported quotation asks for another check instead of producing
-  misleading rewrite advice.
-- Chapter follow-up processing accepts unambiguous variations in AI field
-  formatting while preserving complete clues and rejecting uncertain values.
-- Conflicting volume or chapter positions produce a clear correction message
-  before the active plan is written.
-- Saved chapters detect concurrent changes from other tabs or AI actions and
-  keep your local draft for comparison before the next save.
-- Director recovery prevents an earlier execution attempt from saving results
-  after another worker takes over, preserving the rightful run's progress.
-- Custom provider model lists remain available after restart, with the last
-  discovery time shown alongside your manual selections.
-- Manual chapter reviews show source quotes, reasons to preserve a passage and
-  uncertain findings; unsupported advice is kept out of automatic repair.
-- Knowledge documents can record research sources and extract quoted findings.
-  Choose which findings a novel may use, and revoke them when no longer needed;
-  changed or disabled sources are excluded from writing context.
+- NovelFoundry branding is consistent across the browser title, desktop startup
+  screens, and public documentation navigation.
+- Product screenshots show the current chapter editor, story-direction selection,
+  and Creative Hub with fictional example projects.
 
 [Full update history](docs/releases/release-notes.md).

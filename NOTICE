@@ -1,6 +1,14 @@
 NovelFoundry
 
-This project contains code from Biz Novel Studio (formerly AI Novel Writing
+Project: https://github.com/NathanielbeeLee/NovelFoundry
+
+NovelFoundry is an AI-assisted fiction writing workspace. Product names,
+application entry points, and project documentation refer to NovelFoundry.
+Historical source names below identify inherited code and its notices.
+
+Historical source attribution:
+
+This distribution contains code from Biz Novel Studio (formerly AI Novel Writing
 Assistant 2), available at:
 https://github.com/ExplosiveCoderflome/AI-Novel-Writing-Assistant
 
@@ -13,7 +21,7 @@ notice is reproduced below for attribution. It does not add a condition to the
 rights granted by the AGPL. Any separate commercial license would need to be
 obtained from the holders of the rights it covers.
 
-Original project notice:
+Historical upstream notice (retained for attribution):
 
 This repository uses a dual-license model.
 

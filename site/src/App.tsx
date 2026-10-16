@@ -160,11 +160,11 @@ function SiteNav({ page }: { page: "home" | "docs" }) {
   const stars = useGithubStars(publicRepositoryCoordinates?.owner ?? "", publicRepositoryCoordinates?.repo ?? "");
   return (
     <nav className="site-nav" aria-label="主导航">
-      <a className="brand" href={sitePath("/")} aria-label="AI 小说创作工作台首页">
+      <a className="brand" href={sitePath("/")} aria-label="NovelFoundry 首页">
         <span className="brand-mark">
           <img src={appIcon} alt="" aria-hidden="true" />
         </span>
-        <span>AI 小说创作工作台</span>
+        <span>NovelFoundry</span>
       </a>
       <div className="nav-links">
         <a href={docsPath()}>文档</a>
@@ -207,7 +207,7 @@ function HomePage() {
       >
         <div className="hero-scrim" />
         <div className="hero-content">
-          <p className="eyebrow">AI native novel production workspace</p>
+          <p className="eyebrow">NovelFoundry · From idea to a finished novel</p>
           <h1>从一句灵感，到一整本小说</h1>
           <p className="hero-copy">
             自动导演、世界观、角色、拆章、章节执行和质量修复串成一条长篇生产链，帮助新手把想法推进到可持续写作。
