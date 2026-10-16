@@ -49,7 +49,11 @@ export default function AppLayout() {
   }, [location.pathname]);
 
   const isNovelWorkspace = Boolean(workspaceRoute?.novelId);
-  const useMobileNovelWorkspaceLayout = isMobileViewport && isNovelWorkspace;
+  const isChapterEditor = Boolean(workspaceRoute?.chapterId);
+  // Keep the chapter outlet in one shell across viewport changes so drafts and
+  // the editor's undo history survive crossing the mobile breakpoint.
+  const useMobileChapterEditorLayout = isMobileViewport && isChapterEditor;
+  const useMobileNovelWorkspaceLayout = isMobileViewport && isNovelWorkspace && !isChapterEditor;
   const useMobileSiteLayout = isMobileViewport && !isNovelWorkspace;
   const useMobileFullWidthContent = useMemo(
     () => shouldUseAutoDirectorMobileFullWidthContent(location.pathname),
@@ -133,12 +137,20 @@ export default function AppLayout() {
       <div className="h-[100dvh] overflow-hidden bg-background">
         <AutoDirectorPauseNotificationWatcher />
         <LLMSelectionBootstrap />
-        <Navbar
-          workspaceNavMode={isNovelWorkspace ? workspaceNavMode : undefined}
-          onWorkspaceNavModeChange={isNovelWorkspace ? setWorkspaceNavMode : undefined}
-        />
-        <div className="flex h-[calc(100dvh-4rem)] min-h-0">
-          <div className={useMobileFullWidthContent ? "hidden md:block" : "shrink-0"}>
+        <div className={useMobileChapterEditorLayout ? "hidden" : "contents"}>
+          <Navbar
+            workspaceNavMode={isNovelWorkspace ? workspaceNavMode : undefined}
+            onWorkspaceNavModeChange={isNovelWorkspace ? setWorkspaceNavMode : undefined}
+          />
+        </div>
+        {useMobileChapterEditorLayout ? (
+          <div className="flex h-12 items-center justify-between border-b px-3">
+            <span className="text-sm font-medium">章节编辑</span>
+            <LiveExecutionDialog compact className="h-9 w-9 px-0" />
+          </div>
+        ) : null}
+        <div className={`flex min-h-0 ${useMobileChapterEditorLayout ? "h-[calc(100dvh-3rem)]" : "h-[calc(100dvh-4rem)]"}`}>
+          <div className={useMobileChapterEditorLayout ? "hidden" : useMobileFullWidthContent ? "hidden md:block" : "shrink-0"}>
             {isNovelWorkspace && workspaceNavMode === "workspace" && workspaceRoute ? (
               <NovelWorkspaceRail
                 novelId={workspaceRoute.novelId}
@@ -154,7 +166,7 @@ export default function AppLayout() {
               />
             )}
           </div>
-          <main className={useMobileFullWidthContent ? AUTO_DIRECTOR_MOBILE_CLASSES.appMain : DEFAULT_APP_MAIN_CLASS_NAME}>
+          <main className={useMobileChapterEditorLayout ? "h-full min-w-0 flex-1 overflow-hidden p-3" : useMobileFullWidthContent ? AUTO_DIRECTOR_MOBILE_CLASSES.appMain : DEFAULT_APP_MAIN_CLASS_NAME}>
             <Suspense fallback={<AppRouteFallback />}>
               <Outlet />
             </Suspense>

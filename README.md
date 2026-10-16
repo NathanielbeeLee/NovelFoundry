@@ -107,6 +107,16 @@ next action:
 ![Chapter workspace with a chapter shelf, saved manuscript, production progress, and repair actions](site/src/assets/chapter-execution.png)
 
 <details>
+<summary><strong>Focus on chapter text in a laptop window</strong></summary>
+
+Open chapter information or AI revision when needed; the chapter title, save
+status, and save control stay above the manuscript.
+
+![Chapter editor with a wide manuscript area and compact chapter information and AI revision controls](site/src/assets/chapter-editor.png)
+
+</details>
+
+<details>
 <summary><strong>See how the AI director helps you choose a story direction</strong></summary>
 
 Compare proposed premises and titles, then choose the direction you want to
@@ -324,6 +334,13 @@ are retained in [NOTICE](NOTICE).
 
 ### 2026-10-16
 
+- Chapter editing gives the manuscript room on laptop screens, with chapter
+  context and AI revision available in dialogs when space is limited. Chapter
+  title, save status, and save stay in view.
+- Resizing between desktop and mobile layouts preserves unsaved chapter text
+  and undo history. Save-conflict choices remain reachable on short screens.
+- The header shows a compact current-model entry. Open it to choose a provider,
+  model, or temperature, or go directly to provider configuration.
 - NovelFoundry branding is consistent across the browser title, desktop startup
   screens, and public documentation navigation.
 - Product screenshots show the current chapter editor, story-direction selection,

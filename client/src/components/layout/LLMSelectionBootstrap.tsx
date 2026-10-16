@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { getAPIKeySettings, getLLMSelectionSetting, saveLLMSelectionSetting } from "@/api/settings";
 import { queryKeys } from "@/api/queryKeys";
-import { resolvePreferredLLMSelection } from "@/lib/llmSelection";
+import { isRunnableProviderConfig, resolvePreferredLLMSelection } from "@/lib/llmSelection";
 import { useLLMStore } from "@/store/llmStore";
 
 export default function LLMSelectionBootstrap() {
@@ -84,6 +84,31 @@ export default function LLMSelectionBootstrap() {
       saveSelectionMutation.mutate(resolvedSelection);
     }
   }, [resolvedSelection, saveSelectionMutation, selectionQuery.data?.data, store]);
+
+  useEffect(() => {
+    if (!apiKeySettingsQuery.isSuccess || apiKeySettingsQuery.isFetching || !apiKeySettingsQuery.data?.success) {
+      return;
+    }
+    // Provider settings can change while the header's model dialog is closed.
+    const current = useLLMStore.getState();
+    const configs = apiKeySettingsQuery.data.data ?? [];
+    if (!current.hasHydratedSelection || configs.some((config) => (
+      config.provider === current.provider && isRunnableProviderConfig(config)
+    ))) {
+      return;
+    }
+    const replacement = resolvePreferredLLMSelection(current, configs);
+    if (!replacement) {
+      return;
+    }
+    current.setSelection(replacement);
+    saveSelectionMutation.mutate(replacement);
+  }, [
+    apiKeySettingsQuery.data,
+    apiKeySettingsQuery.isFetching,
+    apiKeySettingsQuery.isSuccess,
+    saveSelectionMutation.mutate,
+  ]);
 
   return null;
 }

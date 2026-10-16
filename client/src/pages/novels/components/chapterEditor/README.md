@@ -30,6 +30,27 @@ the next save still compares the raw baseline and can conflict again. No automat
 merge or unconditional overwrite is offered. Navigating away still does not
 persist unsaved local drafts.
 
+## Manuscript-first layout
+
+`ChapterEditorLayout` measures the available workspace rather than the viewport:
+global navigation can change the space available to the manuscript. Both side
+panels stay inline only from 1380px of content width, leaving at least 668px for
+the manuscript surface. Smaller workspaces expose context and revision dialogs;
+the manuscript keeps one position in the React tree. Prose lines are capped at
+880px so a wide window remains readable.
+
+Chapter identity, save status, issue count, save, back, and version entrypoints
+stay above the manuscript. Revision instructions and candidate state belong to
+the shell, so closing a panel or resizing does not discard them. A revision
+started from a passage opens its panel and returns keyboard focus to a visible
+entrypoint on close. The application shell also keeps the chapter outlet mounted
+across the mobile breakpoint to preserve drafts and undo history.
+
+Save conflicts close an overlapping revision dialog and expose the existing
+comparison. The comparison scrolls within a bounded area on short screens so
+both resolution actions remain reachable. Layout changes must preserve the
+concurrent-save rules above; opening or closing a panel never applies a candidate.
+
 Legacy clients that send prose without `expectedContent` receive 428 and must
 retain their draft and refresh the app. Metadata-only updates remain compatible.
 AI candidate application takes its existing pre-edit snapshot before attempting

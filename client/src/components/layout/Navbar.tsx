@@ -1,4 +1,5 @@
-import { useLocation } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
+import { Settings2 } from "lucide-react";
 import LLMSelector from "@/components/common/LLMSelector";
 import AppVersionBadge from "@/components/layout/AppVersionBadge";
 import DesktopBrandMark from "@/components/layout/DesktopBrandMark";
@@ -6,7 +7,9 @@ import LiveExecutionDialog from "@/components/liveExecution/LiveExecutionDialog"
 import ProjectGithubLink from "@/components/layout/ProjectGithubLink";
 import LanguageToggle from "@/components/layout/LanguageToggle";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogClose, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { useI18n } from "@/i18n";
+import { useLLMStore } from "@/store/llmStore";
 import {
   AUTO_DIRECTOR_MOBILE_CLASSES,
   shouldUseAutoDirectorMobileFullWidthContent,
@@ -20,6 +23,7 @@ interface NavbarProps {
 export default function Navbar(props: NavbarProps) {
   const { workspaceNavMode, onWorkspaceNavModeChange } = props;
   const { t } = useI18n();
+  const model = useLLMStore((state) => state.model);
   const location = useLocation();
   const isHome = location.pathname === "/";
   const showWorkspaceToggle = Boolean(workspaceNavMode && onWorkspaceNavModeChange);
@@ -53,12 +57,34 @@ export default function Navbar(props: NavbarProps) {
         <LanguageToggle />
         <LiveExecutionDialog />
         <div className={useMobileAutoDirectorShell ? AUTO_DIRECTOR_MOBILE_CLASSES.navbarModelSelector : undefined}>
-          <LLMSelector
-            compact
-            showBadge={false}
-            showHelperText={false}
-            showCompactTemperature
-          />
+          <Dialog>
+            <DialogTrigger asChild>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="max-w-[140px] gap-1.5 px-2 lg:max-w-[200px]"
+                aria-label={`${t("header.modelSettings")}${model ? `: ${model}` : ""}`}
+                title={`${t("header.modelSettings")}${model ? `: ${model}` : ""}`}
+              >
+                <Settings2 className="h-4 w-4 shrink-0" aria-hidden="true" />
+                <span className="min-w-0 truncate">{model || t("header.modelSettings")}</span>
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="w-[calc(100vw-2rem)] max-w-md">
+              <DialogHeader className="pr-6">
+                <DialogTitle>{t("header.modelSettings")}</DialogTitle>
+                <DialogDescription>{t("header.modelSettingsDescription")}</DialogDescription>
+              </DialogHeader>
+              <LLMSelector stacked showBadge={false} showCompactTemperature />
+              <p className="text-xs text-muted-foreground">{t("common.temperatureHint")}</p>
+              <DialogClose asChild>
+                <Button asChild variant="outline" className="justify-self-start">
+                  <Link to="/settings">{t("header.providerConfiguration")}</Link>
+                </Button>
+              </DialogClose>
+            </DialogContent>
+          </Dialog>
         </div>
       </div>
     </header>

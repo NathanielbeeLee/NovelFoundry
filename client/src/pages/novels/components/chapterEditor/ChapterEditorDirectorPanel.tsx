@@ -78,7 +78,7 @@ export default function ChapterEditorDirectorPanel(props: ChapterEditorDirectorP
         : session.resolvedIntent?.reasoningSummary || "查看待确认改写";
 
   return (
-    <div className="flex h-full min-h-[420px] flex-col overflow-hidden rounded-3xl border border-border/70 bg-background shadow-sm xl:min-h-0">
+    <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-3xl border border-border/70 bg-background shadow-sm">
       <div className="shrink-0 space-y-3 border-b border-border/70 px-4 py-4">
         <div className="flex items-center justify-between gap-3">
           <div>

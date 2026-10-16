@@ -2,8 +2,8 @@
 
 ## Scope and evidence
 
-Reviewed on 2026-10-16 against the current React application. These are proposed
-layout changes, not a claim that the redesign is implemented. Browser review
+Reviewed on 2026-10-16 against the current React application. The chapter-editing
+and header slice is implemented; the remaining priorities below are proposals. Browser review
 used fictional project data and intercepted API responses; it did not access a
 writer's database, run a model, or verify task execution. The source components,
 styles, navigation, and editor are the actual application implementation.
@@ -12,17 +12,43 @@ The previous direction screenshot showed an obsolete modal. The current
 direction page already uses vertically stacked candidates with optional details
 collapsed. Keep that improvement rather than redesigning around the old image.
 
+## Implemented slice
+
+Chapter editing uses the actual content width. At least 1380px is required to
+keep the 300px context and 380px revision panels beside the manuscript. Narrower
+workspaces use context and revision dialogs; prose lines are capped at 880px.
+Title, save status, issue count, back, version history, and save remain above
+the manuscript. Revision state stays in the shell, and viewport changes keep
+the live text editor mounted, including across the mobile breakpoint.
+
+The header presents the current model through one settings entry at all desktop
+widths. Provider, model, and temperature remain in the dialog, with a direct
+configuration link. Provider validity is synchronized even while it is closed.
+
+With navigation expanded, final editable-element widths are 878px at 1920px,
+880px at 1440px and 1280px, 694px at 1024px, and 490px at 820px. This measures
+the element, including its internal padding, rather than the prose glyph area.
+The original 1440px and 1280px widths were 358px and 183px respectively.
+
+Browser checks use fictional static data. They cover panel access, keyboard
+close and focus return, unsaved prose and undo across resizing, retained
+revision instructions, and a simulated save conflict on a short mobile screen.
+They do not validate live model output or production task execution.
+
+The chapter execution queue, Creative Hub scrolling, candidate density, and
+optional navigation below remain outside this slice.
+
 ## Priority 1: protect the manuscript area
 
-The chapter editor has a 248px workspace rail plus fixed 320px context and
-400px revision panels at the `xl` breakpoint. With navigation expanded, the
-editable element measured 358px at a 1440px viewport and 183px at 1280px.
+Before this slice, the chapter editor had a 248px workspace rail plus fixed
+320px context and 400px revision panels at the `xl` breakpoint. With navigation
+expanded, the editable element measured 358px at a 1440px viewport and 183px at 1280px.
 At 1024px it measured 679px because the three-column breakpoint was inactive.
 The abrupt loss of writing space penalizes ordinary laptop windows.
 
 Use the available content width to decide how many panels can remain open.
-Keep a comfortable manuscript width before allocating side panels; move context
-and revision into tabs or drawers on medium windows. Preserve access to save,
+Keep a comfortable manuscript width before allocating side panels; expose context
+and revision through dialogs on medium windows. Preserve access to save,
 version history, source context, review findings, and repair comparison.
 
 Owners: `ChapterEditorShell.tsx`, `ChapterEditorSidebar.tsx`,
@@ -37,14 +63,14 @@ Owner: `ChapterManagementTab.tsx` and `ChapterExecutionQueueCard.tsx`.
 
 ## Priority 2: reduce header controls on medium screens
 
-At an 820px viewport the chapter workspace header's brand container measured
+Before this slice, at an 820px viewport the header's brand container measured
 24px while its controls occupied 736px. The writing service and model controls
 remain full width above the mobile-shell breakpoint, leaving the product name
 without useful space. This was clipping, not a demonstrated off-screen button.
 
-Keep the brand, current model summary, and execution status visible. Put provider
-selection and temperature behind a compact model-settings entry below the large
-desktop breakpoint. Preserve the project/workspace navigation switch, language
+Keep the brand, current model summary, and execution status visible. Provider
+selection and temperature use one compact model-settings entry at desktop widths.
+Preserve the project/workspace navigation switch, language
 choice, keyboard access, and a clear route to unavailable-provider setup.
 
 Owners: `Navbar.tsx`, `LLMSelector.tsx`, and the mobile shell.
@@ -93,7 +119,7 @@ succeeded or that a preview has been saved.
 
 ## Suggested implementation sequence
 
-1. Make chapter editing and the header usable at 1280px and 820px.
+1. Chapter editing and the header at 1280px and 820px (implemented).
 2. Consolidate scrolling and keep primary actions and the composer visible.
 3. Adjust candidate comparison density and simplify optional navigation.
 

@@ -38,6 +38,7 @@ interface LLMSelectorProps {
   showParameters?: boolean;
   showCompactTemperature?: boolean;
   compact?: boolean;
+  stacked?: boolean;
   showBadge?: boolean;
   showHelperText?: boolean;
   className?: string;
@@ -58,6 +59,7 @@ export default function LLMSelector({
   showParameters = false,
   showCompactTemperature = false,
   compact = false,
+  stacked = false,
   showBadge = true,
   showHelperText = true,
   className,
@@ -271,14 +273,14 @@ export default function LLMSelector({
 
   return (
     <div className={cn("space-y-2", compact && "space-y-1", className)}>
-      <div className={cn("flex min-w-0 items-center gap-2", compact ? "flex-nowrap gap-1.5" : "flex-wrap")}>
+      <div className={cn("flex min-w-0 items-center gap-2", stacked ? "flex-col items-stretch gap-3" : compact ? "flex-nowrap gap-1.5" : "flex-wrap")}>
         {showBadge ? <Badge variant="secondary">{t("common.model")}</Badge> : null}
         <Select
           value={providerSelectValue}
           onValueChange={onProviderChange}
           disabled={!hasRunnableProviders}
         >
-          <SelectTrigger className={cn(compact ? "h-9 w-[148px] lg:w-[164px]" : "w-full sm:w-[180px]")}>
+          <SelectTrigger aria-label={t("common.selectProvider")} className={cn(stacked ? "w-full" : compact ? "h-9 w-[148px] lg:w-[164px]" : "w-full sm:w-[180px]")}>
             <SelectValue placeholder={hasRunnableProviders ? t("common.selectProvider") : t("common.configureProvider")} />
           </SelectTrigger>
           <SelectContent>
@@ -303,7 +305,7 @@ export default function LLMSelector({
             placeholder={hasRunnableProviders ? t("common.selectModel") : t("common.noModels")}
             searchPlaceholder={t("common.searchModels")}
             emptyText={t("common.noModels")}
-            className={cn(compact ? "w-[184px] lg:w-[220px]" : "w-full sm:w-[240px]")}
+            className={cn(stacked ? "w-full" : compact ? "w-[184px] lg:w-[220px]" : "w-full sm:w-[240px]")}
             triggerClassName={compact ? "h-9 px-2.5" : undefined}
             disabled={!hasRunnableProviders}
           />
@@ -311,7 +313,7 @@ export default function LLMSelector({
 
         {showCompactTemperature ? (
           <label
-            className="flex h-9 shrink-0 items-center gap-1.5 rounded-md border border-input bg-background px-2 text-xs text-muted-foreground shadow-sm"
+            className={cn("flex h-9 shrink-0 items-center gap-1.5 rounded-md border border-input bg-background px-2 text-xs text-muted-foreground shadow-sm", stacked && "justify-between")}
             title={t("common.temperatureHint")}
           >
             <span>{t("common.temperature")}</span>

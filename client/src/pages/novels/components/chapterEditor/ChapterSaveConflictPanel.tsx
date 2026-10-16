@@ -6,7 +6,7 @@ export default function ChapterSaveConflictPanel({ localContent, conflict, onRes
   conflict: ChapterSaveConflict;
   onResolve: (keepLocal: boolean) => void;
 }) {
-  return <section role="alert" className="rounded-xl border border-amber-500/50 bg-amber-500/5 p-4">
+  return <section role="alert" className="max-h-[60dvh] shrink-0 overflow-y-auto rounded-xl border border-amber-500/50 bg-amber-500/5 p-4">
     <p className="font-medium">章节有其他修改，请对照后选择</p>
     <p className="mb-3 text-sm text-muted-foreground">你的草稿保留在编辑器中。继续编辑后保存，将用你的稿件替换下方已保存正文；若正文再次变化，会再次提醒你。</p>
     <div className="grid gap-3 md:grid-cols-2">

@@ -33,6 +33,13 @@ The system checks whether a provider, model, base URL, and structured output
 path are usable. If not, it offers one guided setup action. It should not send a
 new user into advanced routing configuration before a first successful test.
 
+The shared header shows the current text model and opens provider, model, and
+temperature choices in one settings dialog, with a direct provider-configuration
+entrypoint. Global provider validity is maintained independently of whether this
+dialog is open: after configuration changes, an unavailable selection moves to
+an available provider while retaining response settings. Failed configuration
+reads or an empty provider list must not silently erase the current selection.
+
 ### One idea
 
 The user can describe an idea in natural language. The system extracts the
@@ -84,3 +91,7 @@ safety failure should stop the global chain.
 - Keep fictional content, reference material, and project facts in separate
   context scopes.
 - Treat every stage as resumable and observable.
+- Give manuscript reading and editing priority over auxiliary panels. Keep save
+  status and conflict recovery reachable in compact windows, and preserve the
+  editor instance when panel layout or viewport size changes. See the
+  [chapter editor ownership rules](../../../client/src/pages/novels/components/chapterEditor/README.md).

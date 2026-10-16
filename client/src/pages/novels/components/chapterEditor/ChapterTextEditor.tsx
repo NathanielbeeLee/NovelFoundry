@@ -256,14 +256,14 @@ export default function ChapterTextEditor(props: ChapterTextEditorProps) {
   );
 
   const helperText = preview?.mode === "inline"
-    ? "当前正在显示细节标记 diff，适合确认具体删改。"
+    ? "查看标记的新增与删除，确认改写细节。"
     : preview?.mode === "loading"
-      ? "AI 正在基于选中内容生成候选版本，原文位置会持续保留。"
+      ? "AI 正在生成改写，原文保留供你对照。"
       : preview?.mode === "block"
-        ? "当前正在显示段落 patch 对比，原文和改写会在正文原位置并排落成红绿块。"
+        ? "对照原文与改写，在 AI 修正中确认是否采用。"
         : readOnly
-          ? "当前有待确认候选，正文暂时锁定，可在右侧切换候选或接受、拒绝。"
-      : "可直接编辑正文，选中内容后可发起 AI 改写。";
+          ? "正文有待确认改写，打开 AI 修正确认或拒绝后可继续编辑。"
+          : "可直接编辑正文，选中内容后可发起 AI 改写。";
 
   useEffect(() => {
     const surface = surfaceRef.current;
@@ -361,14 +361,14 @@ export default function ChapterTextEditor(props: ChapterTextEditorProps) {
   ) : null;
 
   return (
-    <div ref={containerRef} className="relative flex h-full min-h-[540px] flex-col overflow-hidden rounded-3xl border border-border/70 bg-background shadow-sm xl:min-h-0">
-      <div className="shrink-0 flex items-center justify-between border-b border-border/70 px-4 py-3">
+    <div ref={containerRef} className="relative flex h-full min-h-0 flex-col overflow-hidden rounded-3xl border border-border/70 bg-background shadow-sm">
+      <div className="shrink-0 flex items-center justify-between gap-3 border-b border-border/70 px-4 py-3">
         <div className="text-sm font-medium text-foreground">正文</div>
-        <div className="text-xs text-muted-foreground">{helperText}</div>
+        <div className="max-w-[70%] text-right text-xs leading-5 text-muted-foreground">{helperText}</div>
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto p-4">
-        <div className="relative min-h-full">
+        <div className="relative mx-auto min-h-full w-full max-w-[880px]">
           {preview?.mode === "inline" && previewContent ? (
             <div
               ref={surfaceRef}

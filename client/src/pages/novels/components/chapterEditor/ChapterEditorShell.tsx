@@ -16,6 +16,7 @@ import { toast } from "@/components/ui/toast";
 import { useLLMStore } from "@/store/llmStore";
 import ChapterEditorDirectorPanel from "./ChapterEditorDirectorPanel";
 import ChapterEditorSidebar from "./ChapterEditorSidebar";
+import ChapterEditorLayout, { type ChapterEditorPanel } from "./ChapterEditorLayout";
 import ChapterTextEditor from "./ChapterTextEditor";
 import SelectionAIFloatingToolbar from "./SelectionAIFloatingToolbar";
 import type {
@@ -104,6 +105,7 @@ export default function ChapterEditorShell(props: ChapterEditorShellProps) {
   const [revisionScope, setRevisionScope] = useState<ChapterEditorRevisionScope>("selection");
   const [revisionInstruction, setRevisionInstruction] = useState("");
   const [selectedDiagnosticId, setSelectedDiagnosticId] = useState<string | null>(null);
+  const [activePanel, setActivePanel] = useState<ChapterEditorPanel>(null);
 
   useEffect(() => {
     if (saveConflict) return;
@@ -186,7 +188,9 @@ export default function ChapterEditorShell(props: ChapterEditorShellProps) {
     onError: (error) => {
       if (!mountedRef.current) return;
       setDraft((current) => ({ ...current, status: "error" }));
-      setSaveConflict(getChapterSaveConflict(error));
+      const conflict = getChapterSaveConflict(error);
+      setSaveConflict(conflict);
+      if (conflict) setActivePanel(null);
       toast.error(error instanceof Error ? error.message : "章节保存失败。");
     },
   });
@@ -282,7 +286,9 @@ export default function ChapterEditorShell(props: ChapterEditorShellProps) {
     onError: (error) => {
       if (!mountedRef.current) return;
       setDraft((current) => ({ ...current, status: "error" }));
-      setSaveConflict(getChapterSaveConflict(error));
+      const conflict = getChapterSaveConflict(error);
+      setSaveConflict(conflict);
+      if (conflict) setActivePanel(null);
       toast.error(error instanceof Error ? error.message : "应用候选版本失败。");
     },
   });
@@ -353,6 +359,7 @@ export default function ChapterEditorShell(props: ChapterEditorShellProps) {
       model: llm.model,
       temperature: llm.temperature,
     });
+    setActivePanel("revision");
     previewMutation.mutate(request);
   };
 
@@ -387,6 +394,7 @@ export default function ChapterEditorShell(props: ChapterEditorShellProps) {
     setSelectedDiagnosticId(card.id);
     setSelection(null);
     setSelectionToolbarPosition(null);
+    setActivePanel(null);
   };
 
   const handleRunDiagnostic = (card: ChapterEditorDiagnosticCard) => {
@@ -431,7 +439,6 @@ export default function ChapterEditorShell(props: ChapterEditorShellProps) {
           : "尚未选中片段";
   const canRunSelectionRevision = Boolean(getSelectionTarget());
   const headerSaveLabel = getSaveStatusLabel(saveStatus, isDirty);
-  const gridClassName = "xl:grid-cols-[320px_minmax(0,1fr)_400px]";
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-4">
@@ -448,91 +455,91 @@ export default function ChapterEditorShell(props: ChapterEditorShellProps) {
           lastPreviewRequestRef.current = null;
         }}
       />}
-      <div className={`grid min-h-0 flex-1 gap-4 overflow-hidden ${gridClassName}`}>
-        <ChapterEditorSidebar
-          chapter={chapter}
+      <ChapterEditorLayout
+        chapterOrder={chapter.order}
+        chapterTitle={chapter.title?.trim() || "未命名章节"}
+        wordCount={wordCount}
+        openIssueCount={workspace?.chapterMeta.openIssueCount ?? null}
+        saveStatusLabel={headerSaveLabel}
+        isDirty={isDirty}
+        isSaving={saveMutation.isPending || acceptMutation.isPending}
+        saveBlocked={Boolean(saveConflict)}
+        revisionStatus={session.status}
+        activePanel={activePanel}
+        onActivePanelChange={setActivePanel}
+        onBack={onBack}
+        onOpenVersionHistory={onOpenVersionHistory}
+        onSave={() => {
+          if (!saveConflict && !saveMutation.isPending && !acceptMutation.isPending) {
+            saveMutation.mutate({ content: contentDraft, expectedContent: draft.sourceContent });
+          }
+        }}
+        context={<ChapterEditorSidebar
           workspace={workspace}
           workspaceStatus={workspaceStatus}
-          wordCount={wordCount}
-          saveStatusLabel={headerSaveLabel}
-          isDirty={isDirty}
-          isSaving={saveMutation.isPending || acceptMutation.isPending}
-          saveBlocked={Boolean(saveConflict)}
           selectedDiagnosticId={selectedDiagnosticId}
-          onBack={onBack}
-          onOpenVersionHistory={onOpenVersionHistory}
-          onSave={() => {
-            if (!saveConflict && !saveMutation.isPending && !acceptMutation.isPending) {
-              saveMutation.mutate({ content: contentDraft, expectedContent: draft.sourceContent });
-            }
-          }}
           onFocusDiagnostic={handleFocusDiagnostic}
           onRunDiagnostic={handleRunDiagnostic}
+        />}
+        revision={<ChapterEditorDirectorPanel
+          workspace={workspace}
+          workspaceStatus={workspaceStatus}
+          selectedDiagnosticCard={selectedDiagnosticCard}
+          session={session}
+          activeCandidate={activeCandidate}
+          revisionScope={revisionScope}
+          revisionInstruction={revisionInstruction}
+          canRunSelectionRevision={canRunSelectionRevision}
+          currentTargetDescription={currentTargetDescription}
+          isGenerating={previewMutation.isPending}
+          isApplying={acceptMutation.isPending}
+          applyBlocked={saveMutation.isPending || Boolean(saveConflict)}
+          onInstructionChange={setRevisionInstruction}
+          onScopeChange={setRevisionScope}
+          onRunRecommended={handleRunRecommended}
+          onRunSelectedDiagnostic={handleRunSelectedDiagnostic}
+          onRunFreeform={handleRunFreeform}
+          onSelectCandidate={(candidateId) => setSession((current) => ({ ...current, activeCandidateId: candidateId }))}
+          onChangeViewMode={(mode) => setSession((current) => ({ ...current, viewMode: mode }))}
+          onAccept={() => {
+            if (saveConflict || saveMutation.isPending || acceptMutation.isPending || !activeCandidate || !session.targetRange) return;
+            acceptMutation.mutate({
+              content: applyCandidateToContent(contentDraft, session.targetRange, activeCandidate.content),
+              localBefore: contentDraft,
+              expectedContent: draft.sourceContent,
+            });
+          }}
+          onReject={handleReject}
+          onRegenerate={handleRegenerate}
+        />}
+      >
+        <ChapterTextEditor
+          value={contentDraft}
+          readOnly={session.status !== "idle" || acceptMutation.isPending}
+          onChange={(next) => {
+            setDraft((current) => editChapterDraft(current, next));
+          }}
+          onSelectionChange={(nextSelection, position) => {
+            setSelection(nextSelection);
+            setSelectionToolbarPosition(position);
+            if (nextSelection) {
+              setSelectedDiagnosticId(null);
+            }
+          }}
+          preview={previewPayload}
+          focusRange={session.status === "idle"
+            ? selection
+              ? { from: selection.from, to: selection.to }
+              : selectedDiagnosticCard?.anchorRange ?? null
+            : null}
         />
-
-        <div className="relative min-h-0 overflow-hidden">
-          <ChapterTextEditor
-            value={contentDraft}
-            readOnly={session.status !== "idle" || acceptMutation.isPending}
-            onChange={(next) => {
-              setDraft((current) => editChapterDraft(current, next));
-            }}
-            onSelectionChange={(nextSelection, position) => {
-              setSelection(nextSelection);
-              setSelectionToolbarPosition(position);
-              if (nextSelection) {
-                setSelectedDiagnosticId(null);
-              }
-            }}
-            preview={previewPayload}
-            focusRange={session.status === "idle"
-              ? selection
-                ? { from: selection.from, to: selection.to }
-                : selectedDiagnosticCard?.anchorRange ?? null
-              : null}
-          />
-          <SelectionAIFloatingToolbar
-            visible={Boolean(selection && session.status === "idle")}
-            position={selectionToolbarPosition}
-            disabled={previewMutation.isPending}
-            onRunOperation={handleRunOperation}
-          />
-        </div>
-
-        <div className="min-h-0 overflow-hidden">
-          <ChapterEditorDirectorPanel
-            workspace={workspace}
-            workspaceStatus={workspaceStatus}
-            selectedDiagnosticCard={selectedDiagnosticCard}
-            session={session}
-            activeCandidate={activeCandidate}
-            revisionScope={revisionScope}
-            revisionInstruction={revisionInstruction}
-            canRunSelectionRevision={canRunSelectionRevision}
-            currentTargetDescription={currentTargetDescription}
-            isGenerating={previewMutation.isPending}
-            isApplying={acceptMutation.isPending}
-            applyBlocked={saveMutation.isPending || Boolean(saveConflict)}
-            onInstructionChange={setRevisionInstruction}
-            onScopeChange={setRevisionScope}
-            onRunRecommended={handleRunRecommended}
-            onRunSelectedDiagnostic={handleRunSelectedDiagnostic}
-            onRunFreeform={handleRunFreeform}
-            onSelectCandidate={(candidateId) => setSession((current) => ({ ...current, activeCandidateId: candidateId }))}
-            onChangeViewMode={(mode) => setSession((current) => ({ ...current, viewMode: mode }))}
-            onAccept={() => {
-              if (saveConflict || saveMutation.isPending || acceptMutation.isPending || !activeCandidate || !session.targetRange) return;
-              acceptMutation.mutate({
-                content: applyCandidateToContent(contentDraft, session.targetRange, activeCandidate.content),
-                localBefore: contentDraft,
-                expectedContent: draft.sourceContent,
-              });
-            }}
-            onReject={handleReject}
-            onRegenerate={handleRegenerate}
-          />
-        </div>
-      </div>
+        <SelectionAIFloatingToolbar
+          visible={Boolean(selection && session.status === "idle")}
+          position={selectionToolbarPosition}
+          disabled={previewMutation.isPending}
+          onRunOperation={handleRunOperation}
+        />
+      </ChapterEditorLayout>
     </div>
   );
 }

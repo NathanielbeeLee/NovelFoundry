@@ -1,29 +1,12 @@
-import type { Chapter, ChapterEditorDiagnosticCard, ChapterEditorWorkspaceResponse } from "@novelfoundry/shared/types/novel";
+import type { ChapterEditorDiagnosticCard, ChapterEditorWorkspaceResponse } from "@novelfoundry/shared/types/novel";
 import { Button } from "@/components/ui/button";
 
 interface ChapterEditorSidebarProps {
-  chapter: Chapter;
   workspace: ChapterEditorWorkspaceResponse | null;
   workspaceStatus: "loading" | "ready" | "error";
-  wordCount: number;
-  saveStatusLabel: string;
-  isDirty: boolean;
-  isSaving: boolean;
-  saveBlocked?: boolean;
   selectedDiagnosticId: string | null;
-  onBack?: () => void;
-  onOpenVersionHistory?: () => void;
-  onSave: () => void;
   onFocusDiagnostic: (card: ChapterEditorDiagnosticCard) => void;
   onRunDiagnostic: (card: ChapterEditorDiagnosticCard) => void;
-}
-
-function MetaChip(props: { label: string }) {
-  return (
-    <span className="rounded-full bg-muted px-2 py-1 text-xs text-muted-foreground">
-      {props.label}
-    </span>
-  );
 }
 
 function LoadingBar(props: { widthClassName?: string }) {
@@ -34,18 +17,9 @@ function LoadingBar(props: { widthClassName?: string }) {
 
 export default function ChapterEditorSidebar(props: ChapterEditorSidebarProps) {
   const {
-    chapter,
     workspace,
     workspaceStatus,
-    wordCount,
-    saveStatusLabel,
-    isDirty,
-    isSaving,
-    saveBlocked,
     selectedDiagnosticId,
-    onBack,
-    onOpenVersionHistory,
-    onSave,
     onFocusDiagnostic,
     onRunDiagnostic,
   } = props;
@@ -56,59 +30,8 @@ export default function ChapterEditorSidebar(props: ChapterEditorSidebarProps) {
   const isWorkspaceError = workspaceStatus === "error";
 
   return (
-    <div className="min-h-0 overflow-hidden">
+    <div className="h-full min-h-0 overflow-hidden">
       <div className="flex h-full min-h-0 flex-col gap-4 overflow-y-auto pr-1">
-        <div className="shrink-0 rounded-3xl border border-border/70 bg-background p-4 shadow-sm">
-          <div className="flex flex-col gap-4">
-            {onBack ? (
-              <div>
-                <Button size="sm" variant="outline" onClick={onBack}>
-                  返回章节执行页
-                </Button>
-              </div>
-            ) : null}
-
-            <div className="space-y-3">
-              <div className="text-lg font-semibold leading-7 text-foreground">
-                第 {chapter.order} 章 · {chapter.title?.trim() || "未命名章节"}
-              </div>
-
-              <div className="flex flex-wrap gap-2">
-                <MetaChip label={`${wordCount} 字`} />
-                <MetaChip label={saveStatusLabel} />
-                <MetaChip label={isWorkspaceLoading ? "LLM 分析中" : `问题 ${workspace?.chapterMeta.openIssueCount ?? 0}`} />
-              </div>
-
-              {isWorkspaceLoading ? (
-                <div className="space-y-2 pt-1">
-                  <LoadingBar widthClassName="w-full" />
-                  <LoadingBar widthClassName="w-4/5" />
-                </div>
-              ) : workspace?.chapterMeta.styleSummary ? (
-                <div className="text-sm leading-6 text-muted-foreground">
-                  当前写法资产：{workspace.chapterMeta.styleSummary}
-                </div>
-              ) : null}
-            </div>
-
-            <div className="grid grid-cols-1 gap-2">
-              <Button
-                size="sm"
-                onClick={onSave}
-                disabled={!isDirty || isSaving || saveBlocked}
-                className="w-full"
-              >
-                {saveBlocked ? "请先处理正文冲突" : isSaving ? "保存中..." : "保存"}
-              </Button>
-              {onOpenVersionHistory ? (
-                <Button size="sm" variant="outline" onClick={onOpenVersionHistory} className="w-full">
-                  版本入口
-                </Button>
-              ) : null}
-            </div>
-          </div>
-        </div>
-
         <div className="shrink-0 rounded-3xl border border-border/70 bg-background p-4 shadow-sm">
           <div className="mb-3 flex items-center justify-between gap-3">
             <div className="text-sm font-medium text-foreground">宏观定位</div>
@@ -116,6 +39,12 @@ export default function ChapterEditorSidebar(props: ChapterEditorSidebarProps) {
               {isWorkspaceLoading ? "AI 分析中" : workspace?.refreshReason ?? "实时生成"}
             </span>
           </div>
+
+          {workspace?.chapterMeta.styleSummary ? (
+            <p className="mb-4 text-sm leading-6 text-muted-foreground">
+              当前写法资产：{workspace.chapterMeta.styleSummary}
+            </p>
+          ) : null}
 
           {isWorkspaceLoading ? (
             <div className="space-y-4 text-sm leading-6 text-muted-foreground">
@@ -153,7 +82,7 @@ export default function ChapterEditorSidebar(props: ChapterEditorSidebarProps) {
             </div>
           ) : isWorkspaceError ? (
             <div className="text-sm leading-6 text-muted-foreground">
-              宏观定位暂时加载失败，你仍然可以先编辑正文或在右侧直接发起 AI 修正。
+              宏观定位暂时加载失败，你可以先编辑正文，或打开 AI 修正输入修改意见。
             </div>
           ) : (
             <div className="text-sm leading-6 text-muted-foreground">
@@ -243,9 +172,9 @@ export default function ChapterEditorSidebar(props: ChapterEditorSidebarProps) {
             }) : (
               <div className="rounded-2xl border border-dashed border-border/70 bg-muted/10 p-4 text-sm leading-6 text-muted-foreground">
                 {isWorkspaceError
-                  ? "问题卡暂时加载失败，你可以先在右侧直接输入修改意见，或手动选中片段发起修正。"
+                  ? "问题卡暂时加载失败，你可以打开 AI 修正输入修改意见，或手动选中片段发起修正。"
                   : workspace
-                  ? "AI 暂时还没有整理出明确的问题卡，你可以先在右侧直接输入修改意见，或手动选中片段发起修正。"
+                  ? "AI 暂时还没有整理出明确的问题卡，你可以打开 AI 修正输入修改意见，或手动选中片段发起修正。"
                   : "正在加载本章工作区。"}
               </div>
             )}
