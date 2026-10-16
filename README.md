@@ -6,34 +6,47 @@
 
 An open-source AI-native writing workspace for first-time novelists.
 
-![NovelFoundry: an illuminated book forging a connected story world](images/github/novelfoundry-hero.png)
-
 [![License: AGPL-3.0-only](https://img.shields.io/badge/License-AGPL--3.0--only-2563EB)](LICENSE)
 [![CI](https://github.com/NathanielbeeLee/NovelFoundry/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/NathanielbeeLee/NovelFoundry/actions/workflows/ci.yml)
 ![Web: React + Vite](https://img.shields.io/badge/Web-React%20%2B%20Vite-0891B2)
 ![Desktop: Windows + Electron](https://img.shields.io/badge/Desktop-Windows%20%2B%20Electron-7C3AED)
 
 [Quick start](#quick-start) · [Features](#features) ·
-[Your first novel](#your-first-novel) · [Documentation](#documentation) ·
+[Workspace tour](#workspace-tour) · [Documentation](#documentation) ·
+[Latest update](#latest-update) ·
 [Contributing](CONTRIBUTING.md) · [Report an issue](https://github.com/NathanielbeeLee/NovelFoundry/issues)
+
+<img src="images/github/novelfoundry-hero.png" alt="NovelFoundry: an illuminated book forging a connected story world" width="800">
 
 </div>
 
 Describe an idea and let AI guide you through story planning, worldbuilding,
-character preparation, chapter writing, review, and repair. Saved projects and
-recoverable tasks help you reach a readable first chapter and keep working
-toward a complete book. Short stories have their own production workspace.
+character preparation, chapter writing, review, and repair. Follow the next
+recommended action, read the saved chapters, and recover interrupted tasks as
+you work toward a complete manuscript.
 
-> **Active development.** The web workspace and Windows desktop packaging are
-> available in this repository. Chinese/English UI coverage is partial; see
-> [FAQ](#faq) for language and data-storage details.
+**Start with one working text model.** Image generation, vector retrieval, and
+research tools are optional. The first milestone is a saved, readable chapter.
+
+> **Active development.** Source code is available; a desktop installer has not
+> been published in this repository yet. Chinese/English UI coverage is partial.
+> See [FAQ](#faq) for language, model costs, and data-storage details.
 
 ## Quick start
 
-You need **Node.js 22.12+ within 22.x**, **pnpm 10.6+**, and access to one text
-model through a cloud provider or a local Ollama server. Node.js 20.19+ within
-20.x and Node.js 24+ are also supported (`^20.19.0 || ^22.12.0 || >=24.0.0`).
-The workspace pins pnpm 10.6.0.
+| How you want to start | Go here |
+| --- | --- |
+| Run the current application | [Run from source](#run-from-source) |
+| Check Windows desktop availability | [Windows desktop](#windows-desktop) |
+| Understand the writing workflow first | [Your first novel](#your-first-novel) |
+
+### Run from source
+
+Install [Node.js](https://nodejs.org/en/download) and
+[pnpm](https://pnpm.io/installation), then connect one cloud text model or a
+local Ollama server. **Node.js 22.12+ within 22.x** is a supported choice;
+20.19+ within 20.x and Node.js 24+ are also supported. The workspace pins
+**pnpm 10.6.0** and requires pnpm 10.6 or newer.
 
 ```bash
 git clone --branch main https://github.com/NathanielbeeLee/NovelFoundry.git
@@ -42,43 +55,69 @@ pnpm install
 pnpm dev
 ```
 
-Open **[http://localhost:5173](http://localhost:5173)**, or the client URL printed
-by Vite if that port is occupied. Follow quick setup to select a provider and
-model, then run the normal-text and structured-output checks.
+Keep the terminal running and open **[http://localhost:5173](http://localhost:5173)**,
+or the client URL printed by Vite if that port is occupied. In quick setup,
+select a provider and model, then run the normal-text and structured-output
+checks. Continue with [your first novel](#your-first-novel).
 
-The default source setup prepares a local **SQLite** database at startup. A
-separate database server, Qdrant, and an image model are not required for your
-first chapter. Start with one working text model and add optional services later.
+The first launch prepares Prisma and a local **SQLite** database automatically.
+A separate database server, Qdrant, and an image model are not required for your
+first chapter. See [Installation](docs/public/installation.md) for preparation
+and [Troubleshooting](docs/public/troubleshooting.md) if startup needs attention.
 
-For published Windows desktop builds, check the repository's
-[Releases page](https://github.com/NathanielbeeLee/NovelFoundry/releases).
-See [Installation and preparation](docs/public/installation.md) for more detail,
-or [Troubleshooting](docs/public/troubleshooting.md) if setup needs attention.
+### Windows desktop
+
+Windows x64 installer and portable packaging are included in the source tree.
+Check [Releases](https://github.com/NathanielbeeLee/NovelFoundry/releases) for
+published builds; until a build is listed, use the source setup above. Developer
+desktop commands are under [Development](#development).
 
 ## Features
 
-- **Start from one idea.** AI Creation Studio proposes story directions and
-  helps you choose a short story or a long novel. The AI director guides book
-  preparation and production.
-- **Plan and write a whole book.** Prepare the story, world, cast, volumes,
-  pacing, and chapter goals. Generate, review, repair, and save chapters through
-  the same production chain.
-- **Keep the story connected.** Track character facts, timelines, resources,
-  and foreshadowing. Review chapters and the whole book for consistency and
-  prose quality.
-- **Continue after interruptions.** Follow tasks and live AI execution in
-  Task Center, inspect checkpoints, and use Director Follow-ups for recovery.
-  Local quality issues can remain visible as repair guidance or quality debt
-  while the rest of the book continues.
-- **Build your writing toolkit.** Analyze books, retrieve reference knowledge,
-  manage writing profiles and anti-AI rules, develop titles, and inspect prompts
-  in Prompt Workbench.
-- **Export and back up your work.** Export manuscripts and project data as
-  TXT, Markdown, or JSON. Create portable novel backups with linked assets and
-  restore an independent copy.
-- **Explore comic and drama projects.** Develop comic and short-drama projects
-  from novel material, original ideas, or imported text. Image generation
-  requires a suitable provider.
+| What you want to do | How NovelFoundry helps |
+| --- | --- |
+| Turn an idea into a book | Compare AI story directions, prepare the world and cast, and turn volume plans into chapter goals. [Production guide](docs/public/flow/end-to-end-production.md) |
+| Finish chapters with guidance | Generate, review, repair, and save through one chapter workflow. Manual saves keep your local draft when another tab or AI has changed the text. [Chapter execution](docs/public/flow/chapter-execution.md) |
+| Keep a long story connected | Track character facts, timelines, resources, and foreshadowing; review chapters and the whole book for consistency. [Novel workspace](docs/public/modules/novels.md) |
+| Understand review advice | See quoted passages, reading impact, reasons to preserve a passage, and uncertain findings. Unsupported manual-review advice stays out of automatic repair. [Review evidence](docs/wiki/workflows/chapter-production-chain.md#manual-prose-saves-and-review-evidence) |
+| Continue after interruptions | Inspect progress and checkpoints in Task Center and Director Follow-ups. Local quality issues remain visible without automatically stopping the rest of the book. [Recovery playbook](docs/public/playbook/recovery-by-phase.md) |
+| Keep and move your work | Export TXT, Markdown, or JSON, or restore an independent project copy from a portable novel backup with linked assets. [Backup and restore](docs/wiki/workflows/novel-backup-restore.md) |
+
+<details>
+<summary><strong>Optional tools for research, style, and derivative works</strong></summary>
+
+- **Research and reference material:** retrieve knowledge documents, or extract
+  quoted findings from one document and explicitly adopt or revoke them for a
+  novel. Changed or disabled research sources are excluded from writing context.
+  See [Knowledge and RAG](docs/public/flow/knowledge-and-rag.md) and
+  [Research adoption](docs/wiki/workflows/knowledge-research-adoption.md).
+- **Writing assets:** analyze books, manage writing profiles and anti-AI rules,
+  develop titles, and inspect prompts in Prompt Workbench.
+- **Other formats:** short stories have their own production workspace. Comic
+  and short-drama projects can start from novel material, ideas, or imported text;
+  image generation needs a suitable provider.
+
+</details>
+
+## Workspace tour
+
+Read saved prose alongside chapter progress, review issues, and the recommended
+next action:
+
+![Chapter workspace with a chapter shelf, saved manuscript, production progress, and repair actions](site/src/assets/chapter-execution.png)
+
+<details>
+<summary><strong>See how the AI director helps you choose a story direction</strong></summary>
+
+Compare proposed premises and titles, then choose the direction you want to
+develop before the director prepares the book.
+
+![AI director comparing two proposed story directions and title candidates](site/src/assets/director-choice.png)
+
+</details>
+
+These example projects use the Chinese interface. Layouts and branding may
+vary by build; see [language coverage](#faq).
 
 ## Your first novel
 
@@ -100,8 +139,8 @@ Choose the writing mode that fits how much control you want:
 | **Guided creation** | AI continues the book while a simple chapter shelf shows progress and stable drafts. |
 | **Professional workspace** | Inspect and edit the plan, characters, and chapter manuscript. |
 
-The first milestone is a saved, readable chapter. Writing profiles, reference
-collections, image models, and per-task routing can be added later. Follow the
+Writing profiles, reference collections, image models, and per-task routing
+can be added later. Follow the
 [first novel walkthrough](docs/public/playbook/first-novel-walkthrough.md)
 for the complete sequence.
 
@@ -131,12 +170,24 @@ the default SQLite database. See [Model routing](docs/public/modules/model-routi
 | Follow a whole book | [End-to-end production](docs/public/flow/end-to-end-production.md) and [AI director pipeline](docs/public/flow/auto-director-pipeline.md) |
 | Understand chapter writing | [Chapter execution](docs/public/flow/chapter-execution.md) |
 | Recover an interrupted run | [Recovery by phase](docs/public/playbook/recovery-by-phase.md) and [Troubleshooting](docs/public/troubleshooting.md) |
+| See the project direction and recent changes | [Public roadmap](docs/public/development-roadmap.md) and [Release notes](docs/releases/release-notes.md) |
 | Work on the codebase | [Contributing](CONTRIBUTING.md) and [Project knowledge graph](docs/wiki/knowledge-graph/README.md) |
 
 The [`site/`](site/) package serves the public guides with workflow diagrams
 and selected screenshots. Run `pnpm dev:site` to browse them locally.
 
 ## FAQ
+
+<details>
+<summary><strong>Do I need a paid model? Can I use Ollama?</strong></summary>
+
+NovelFoundry does not include model credits. Cloud providers bill usage
+separately, and long-book planning, writing, and review can make many requests.
+Local Ollama does not need an API key; model quality, speed, and context capacity
+depend on the model and your hardware. Run the setup checks and try one chapter
+before starting a whole book.
+
+</details>
 
 <details>
 <summary><strong>Is the interface fully bilingual?</strong></summary>
@@ -151,10 +202,18 @@ text.
 <details>
 <summary><strong>Where does my data go?</strong></summary>
 
-The default local setup stores project state in SQLite and generated assets on
-disk. AI calls send prompts and selected story context to your configured model
-endpoint. Development logs may contain model inputs and outputs;
-`LLM_DEBUG_LOG=false` disables LLM request debug logging.
+Default local storage depends on how you run the app:
+
+| Run mode | Default location |
+| --- | --- |
+| Source | Database: `server/dev.db`; generated images: `server/storage/generated-images/`; logs: `.logs/` |
+| Windows installed desktop | `%LOCALAPPDATA%\NovelFoundry\` |
+| Windows portable desktop | `<executable-name>-data\` beside the executable |
+
+Configured database or application-data paths override these defaults. AI calls
+send prompts and selected story context to your configured model endpoint.
+Development logs may contain model inputs and outputs; `LLM_DEBUG_LOG=false`
+disables LLM request debug logging.
 
 Protect databases, provider credentials, private novels, backups, generated
 assets, and logs when sharing a project or reporting an issue. See the
@@ -249,8 +308,9 @@ Identify the source, license, and notice obligations for third-party code,
 prompts, assets, or data included in a contribution.
 
 The current priorities are stable recovery, chapter production, and beginner
-completion of a full novel. See the [optimization plan](docs/plans/optimization-backlog.md)
-for the active backlog.
+completion of a full novel. See the [public roadmap](docs/public/development-roadmap.md)
+for the product direction and the [optimization plan](docs/plans/optimization-backlog.md)
+for the active development backlog.
 
 ## License
 

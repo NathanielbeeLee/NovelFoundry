@@ -2,7 +2,7 @@
 
 This roadmap is for users and people following the project's direction. It
 separates shipped work, active work, and ideas under evaluation. The complete
-history is in [Release notes](#/docs/release-notes).
+history is in [Release notes](../releases/release-notes.md).
 
 ## Shipped recently
 

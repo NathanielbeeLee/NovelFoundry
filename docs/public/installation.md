@@ -66,13 +66,30 @@ settings.
 
 ## Run from source
 
+Install [Node.js](https://nodejs.org/en/download) and
+[pnpm](https://pnpm.io/installation) first. The workspace pins pnpm 10.6.0;
+Node.js 22.12+ within 22.x is supported, as are 20.19+ within 20.x and 24+.
+
 ```bash
 git clone --branch main https://github.com/NathanielbeeLee/NovelFoundry.git
 cd NovelFoundry
 pnpm install
 pnpm dev
+```
+
+Keep that terminal running and open the client URL printed by Vite, usually
+`http://localhost:5173`. The first launch prepares Prisma and the local SQLite
+database automatically. Configure one text model and run the setup checks before
+starting a novel.
+
+To compile the application for development verification, use a separate command:
+
+```bash
 pnpm build
 ```
+
+Building is optional for the first source launch and does not create a desktop
+installer.
 
 To preview only the public site:
 
