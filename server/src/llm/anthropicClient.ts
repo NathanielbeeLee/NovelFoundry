@@ -6,6 +6,7 @@ import {
   type BaseMessage,
   type MessageContent,
 } from "@langchain/core/messages";
+import { StreamOutcomeError } from "./streamOutcome";
 
 interface AnthropicLLMOptions {
   apiKey?: string;
@@ -22,6 +23,48 @@ type AnthropicRole = "user" | "assistant";
 interface AnthropicMessage {
   role: AnthropicRole;
   content: string;
+}
+
+/** Owns the deadline until the response body, rather than just headers, is done. */
+class AnthropicRequestLifetime {
+  readonly controller = new AbortController();
+  private readonly aborted: Promise<never>;
+  private timer?: ReturnType<typeof setTimeout>;
+  private readonly forwardAbort = () => this.abort(this.upstream?.reason);
+
+  constructor(timeoutMs?: number, private readonly upstream?: AbortSignal) {
+    this.aborted = new Promise<never>((_resolve, reject) => {
+      this.controller.signal.addEventListener("abort", () => {
+        this.dispose();
+        reject(this.controller.signal.reason);
+      }, { once: true });
+    });
+    void this.aborted.catch(() => undefined);
+    if (typeof timeoutMs === "number" && Number.isFinite(timeoutMs) && timeoutMs > 0) {
+      this.timer = setTimeout(() => {
+        const error = new Error("Anthropic request timed out.");
+        error.name = "TimeoutError";
+        this.abort(error);
+      }, timeoutMs);
+    }
+    if (upstream?.aborted) this.forwardAbort();
+    else upstream?.addEventListener("abort", this.forwardAbort, { once: true });
+  }
+
+  abort(reason?: unknown): void {
+    const error = reason instanceof Error ? reason : new Error(
+      typeof reason === "string" ? reason : "Anthropic request aborted.",
+    );
+    if (!(reason instanceof Error)) error.name = "AbortError";
+    if (!this.controller.signal.aborted) this.controller.abort(error);
+  }
+
+  race<T>(work: Promise<T>): Promise<T> { return Promise.race([work, this.aborted]); }
+
+  dispose(): void {
+    clearTimeout(this.timer);
+    this.upstream?.removeEventListener("abort", this.forwardAbort);
+  }
 }
 
 function stringifyMessageContent(content: MessageContent | unknown): string {
@@ -140,21 +183,17 @@ export function createAnthropicLLM(options: AnthropicLLMOptions): {
   stream: (messages: BaseMessage[], callOptions?: { signal?: AbortSignal }) => Promise<AsyncIterable<AIMessageChunk>>;
   batch: (messages: BaseMessage[][], callOptions?: { signal?: AbortSignal }) => Promise<AIMessage[]>;
 } {
-  async function postMessages(messages: BaseMessage[], callOptions?: { signal?: AbortSignal }, stream = false): Promise<Response> {
+  async function postMessages(messages: BaseMessage[], callOptions?: { signal?: AbortSignal }, stream = false) {
     const converted = convertMessages(messages);
     if (converted.messages.length === 0) {
       throw new Error("Anthropic request requires at least one user or assistant message.");
     }
-    const controller = new AbortController();
-    const timeout = options.timeoutMs
-      ? setTimeout(() => controller.abort(new Error("Anthropic request timed out.")), options.timeoutMs)
-      : null;
-    if (callOptions?.signal?.aborted) controller.abort(callOptions.signal.reason);
-    else callOptions?.signal?.addEventListener("abort", () => controller.abort(callOptions.signal?.reason), { once: true });
+    const lifetime = new AnthropicRequestLifetime(options.timeoutMs, callOptions?.signal);
     try {
-      const response = await fetch(`${normalizeBaseURL(options.baseURL)}/messages`, {
+      lifetime.controller.signal.throwIfAborted();
+      const response = await lifetime.race(fetch(`${normalizeBaseURL(options.baseURL)}/messages`, {
         method: "POST",
-        signal: controller.signal,
+        signal: lifetime.controller.signal,
         headers: {
           "content-type": "application/json",
           ...buildAnthropicAuthHeaders(options.authMode ?? "x-api-key", options.apiKey),
@@ -168,87 +207,118 @@ export function createAnthropicLLM(options: AnthropicLLMOptions): {
           ...(converted.system ? { system: converted.system } : {}),
           messages: converted.messages,
         }),
-      });
+      }));
       if (!response.ok) {
-        const detail = await response.text();
+        const detail = await lifetime.race(response.text());
         throw new Error(`Anthropic request failed (${response.status}): ${detail || response.statusText}`);
       }
-      return response;
-    } finally {
-      if (timeout) {
-        clearTimeout(timeout);
-      }
+      return { response, lifetime };
+    } catch (error) {
+      lifetime.dispose();
+      throw error;
     }
   }
 
   return {
     async invoke(messages, callOptions) {
-      const response = await postMessages(messages, callOptions, false);
-      const payload = await response.json();
-      return new AIMessage({
-        content: extractTextContent(payload),
-        response_metadata: payload && typeof payload === "object" ? payload as Record<string, unknown> : {},
-      });
+      const { response, lifetime } = await postMessages(messages, callOptions, false);
+      try {
+        const payload = await lifetime.race(response.json());
+        return new AIMessage({
+          content: extractTextContent(payload),
+          response_metadata: payload && typeof payload === "object" ? payload as Record<string, unknown> : {},
+        });
+      } finally {
+        lifetime.dispose();
+      }
     },
     async stream(messages, callOptions) {
-      const response = await postMessages(messages, callOptions, true);
+      const { response, lifetime } = await postMessages(messages, callOptions, true);
       const body = response.body;
       if (!body) {
+        lifetime.dispose();
         throw new Error("Anthropic stream response body is empty.");
       }
-      return {
-        async *[Symbol.asyncIterator]() {
-          const reader = body.getReader();
-          const decoder = new TextDecoder();
-          let buffer = "";
-          let inputTokens = 0;
-          let outputTokens = 0;
-          const chunkFromEvent = (raw: unknown): AIMessageChunk | null => {
-            if (!raw || typeof raw !== "object") return null;
-            const event = raw as { type?: string; message?: { usage?: { input_tokens?: number; output_tokens?: number } }; usage?: { input_tokens?: number; output_tokens?: number }; delta?: { stop_reason?: string; thinking?: string }; error?: { message?: string } };
-            if (event.type === "error") throw new Error(event.error?.message ?? "Anthropic stream failed.");
-            const usage = event.usage ?? event.message?.usage;
-            inputTokens = usage?.input_tokens ?? inputTokens;
-            outputTokens = usage?.output_tokens ?? outputTokens;
-            const text = extractDeltaText(raw);
-            const reasoning = event.delta?.thinking;
-            const stopReason = event.delta?.stop_reason;
-            if (!text && !reasoning && !stopReason && !usage) return null;
-            return new AIMessageChunk({
-              content: text,
-              ...(reasoning ? { additional_kwargs: { reasoning_content: reasoning } } : {}),
-              ...(stopReason ? { response_metadata: { stop_reason: stopReason } } : {}),
-              ...(usage ? { usage_metadata: { input_tokens: inputTokens, output_tokens: outputTokens, total_tokens: inputTokens + outputTokens } } : {}),
-            });
-          };
-          try {
-            while (true) {
-              const { value, done } = await reader.read();
-              if (done) {
-                break;
-              }
-              buffer += decoder.decode(value, { stream: true });
-              const lines = buffer.split(/\r?\n/u);
-              buffer = lines.pop() ?? "";
-              for (const line of lines) {
-                const chunk = chunkFromEvent(parseStreamLine(line));
-                if (chunk) yield chunk;
-              }
+      const reader = body.getReader();
+      let cleanup: Promise<void> | undefined;
+      const close = () => cleanup ??= (async () => {
+        lifetime.dispose();
+        lifetime.controller.signal.removeEventListener("abort", onAbort);
+        await reader.cancel().catch(() => undefined);
+        reader.releaseLock();
+      })();
+      const onAbort = () => { void close(); };
+      lifetime.controller.signal.addEventListener("abort", onAbort, { once: true });
+      if (lifetime.controller.signal.aborted) onAbort();
+      const iterator = (async function* () {
+        const decoder = new TextDecoder();
+        let buffer = "";
+        let inputTokens = 0;
+        let outputTokens = 0;
+        let stopped = false;
+        const chunkFromEvent = (raw: unknown): AIMessageChunk | null => {
+          if (!raw || typeof raw !== "object") return null;
+          const event = raw as { type?: string; message?: { usage?: { input_tokens?: number; output_tokens?: number } }; usage?: { input_tokens?: number; output_tokens?: number }; delta?: { stop_reason?: string; thinking?: string }; error?: { message?: string } };
+          if (event.type === "error") throw new Error(event.error?.message ?? "Anthropic stream failed.");
+          if (event.type === "message_stop") stopped = true;
+          const usage = event.usage ?? event.message?.usage;
+          inputTokens = usage?.input_tokens ?? inputTokens;
+          outputTokens = usage?.output_tokens ?? outputTokens;
+          const text = extractDeltaText(raw);
+          const reasoning = event.delta?.thinking;
+          const stopReason = event.delta?.stop_reason;
+          if (!text && !reasoning && !stopReason && !usage) return null;
+          return new AIMessageChunk({
+            content: text,
+            ...(reasoning ? { additional_kwargs: { reasoning_content: reasoning } } : {}),
+            ...(stopReason ? { response_metadata: { stop_reason: stopReason } } : {}),
+            ...(usage ? { usage_metadata: { input_tokens: inputTokens, output_tokens: outputTokens, total_tokens: inputTokens + outputTokens } } : {}),
+          });
+        };
+        try {
+          while (true) {
+            lifetime.controller.signal.throwIfAborted();
+            const { value, done } = await lifetime.race(reader.read());
+            if (done) {
+              break;
             }
-            const tail = decoder.decode();
-            if (tail) {
-              buffer += tail;
-            }
-            for (const line of buffer.split(/\r?\n/u)) {
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split(/\r?\n/u);
+            buffer = lines.pop() ?? "";
+            for (const line of lines) {
               const chunk = chunkFromEvent(parseStreamLine(line));
               if (chunk) yield chunk;
+              if (stopped) return;
             }
-          } finally {
-            await reader.cancel().catch(() => undefined);
-            reader.releaseLock();
           }
-        },
+          const tail = decoder.decode();
+          if (tail) {
+            buffer += tail;
+          }
+          for (const line of buffer.split(/\r?\n/u)) {
+            const chunk = chunkFromEvent(parseStreamLine(line));
+            if (chunk) yield chunk;
+            if (stopped) return;
+          }
+          throw new StreamOutcomeError("interrupted");
+        } finally {
+          await close();
+        }
+      })();
+      const cancel = async (reason?: unknown) => {
+        lifetime.abort(reason);
+        await close();
       };
+      // An async generator's finally does not run when returned before first next().
+      // The explicit facade also closes never-consumed streams and blocked reads.
+      const stream: AsyncIterableIterator<AIMessageChunk> & { cancel(reason?: unknown): Promise<void> } = {
+        [Symbol.asyncIterator]() { return stream; },
+        next: () => iterator.next(),
+        async return() { await cancel(); return iterator.return(undefined); },
+        async throw(error?: unknown) { await cancel(error); return iterator.throw(error); },
+        cancel,
+      };
+      return stream;
     },
     async batch(messages, callOptions) {
       return Promise.all(messages.map((entry) => this.invoke(entry, callOptions)));

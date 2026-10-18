@@ -3,6 +3,7 @@ import type { ChatOpenAI } from "@langchain/openai";
 import type { TaskType } from "./modelRouter";
 import type { PromptInvocationMeta } from "../prompting/core/promptTypes";
 import { appendLlmSessionLog } from "./sessionLogFile";
+import { observeStream } from "./streamLifecycle";
 
 const LLM_DEBUG_PATCHED = Symbol("LLM_DEBUG_PATCHED");
 const LOG_TRUE_VALUES = new Set(["1", "true", "on", "yes"]);
@@ -502,31 +503,29 @@ function logLLMError(method: "invoke" | "stream" | "batch", error: unknown, meta
 }
 
 function wrapLoggedStream(stream: AsyncIterable<unknown>, meta: LLMDebugMeta, requestId: string, startedAt: number): AsyncIterable<unknown> {
-  return {
-    async *[Symbol.asyncIterator]() {
-      const chunks: string[] = [];
-      try {
-        for await (const chunk of stream) {
-          if (chunk && typeof chunk === "object" && "content" in (chunk as Record<string, unknown>)) {
-            chunks.push(stringifyContent((chunk as { content?: unknown }).content));
-          } else {
-            chunks.push(safeStringify(chunk));
-          }
-          yield chunk;
+  return observeStream(stream, async function* (source) {
+    const chunks: string[] = [];
+    try {
+      for await (const chunk of source) {
+        if (chunk && typeof chunk === "object" && "content" in (chunk as Record<string, unknown>)) {
+          chunks.push(stringifyContent((chunk as { content?: unknown }).content));
+        } else {
+          chunks.push(safeStringify(chunk));
         }
-        logLLMResponse(
-          "stream",
-          { content: chunks.join("") },
-          meta,
-          requestId,
-          Date.now() - startedAt,
-        );
-      } catch (error) {
-        logLLMError("stream", error, meta, requestId, Date.now() - startedAt);
-        throw error;
+        yield chunk;
       }
-    },
-  };
+      logLLMResponse(
+        "stream",
+        { content: chunks.join("") },
+        meta,
+        requestId,
+        Date.now() - startedAt,
+      );
+    } catch (error) {
+      logLLMError("stream", error, meta, requestId, Date.now() - startedAt);
+      throw error;
+    }
+  });
 }
 
 export function attachLLMDebugLogging(llm: ChatOpenAI, meta: LLMDebugMeta): ChatOpenAI {

@@ -2,6 +2,7 @@ import { AsyncLocalStorage } from "node:async_hooks";
 import type { ChatOpenAI } from "@langchain/openai";
 import { prisma } from "../db/prisma";
 import type { LLMProvider } from "@novelfoundry/shared/types/llm";
+import { observeStream } from "./streamLifecycle";
 
 export interface LlmTokenUsageSnapshot {
   promptTokens: number;
@@ -361,22 +362,20 @@ function wrapUsageTrackedStream<T>(
   startedAt: number,
   meta?: LlmUsageTrackingMeta,
 ): AsyncIterable<T> {
-  return {
-    async *[Symbol.asyncIterator]() {
-      let usage: LlmTokenUsageSnapshot | null = null;
-      try {
-        for await (const chunk of rawStream) {
-          usage = mergeStreamTokenUsage(usage, extractLlmTokenUsage(chunk));
-          yield chunk;
-        }
-      } finally {
-        await recordTrackedLlmUsage(usage, {
-          durationMs: Date.now() - startedAt,
-          meta,
-        });
+  return observeStream(rawStream, async function* (source) {
+    let usage: LlmTokenUsageSnapshot | null = null;
+    try {
+      for await (const chunk of source) {
+        usage = mergeStreamTokenUsage(usage, extractLlmTokenUsage(chunk));
+        yield chunk;
       }
-    },
-  };
+    } finally {
+      await recordTrackedLlmUsage(usage, {
+        durationMs: Date.now() - startedAt,
+        meta,
+      });
+    }
+  });
 }
 
 export function attachLLMUsageTracking(llm: ChatOpenAI, meta?: LlmUsageTrackingMeta): ChatOpenAI {

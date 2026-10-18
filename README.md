@@ -334,6 +334,9 @@ are retained in [NOTICE](NOTICE).
 
 ### 2026-10-18
 
+- Streaming generation respects model concurrency limits through completion,
+  with cancellation and timeouts that close stalled requests. Interrupted
+  Anthropic responses require a fresh attempt instead of appearing complete.
 - Rewrite candidates offer an optional impact assessment with quoted evidence,
   nearby chapter references and clearly marked uncertainty. Changed drafts or
   expired assessments require a fresh check before assessed adoption.

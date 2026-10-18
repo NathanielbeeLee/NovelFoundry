@@ -1,5 +1,7 @@
 import type { ChatOpenAI } from "@langchain/openai";
 import type { LLMProvider } from "@novelfoundry/shared/types/llm";
+import { AsyncLocalStorage } from "node:async_hooks";
+import { holdStreamPermit } from "./streamLifecycle";
 
 const LLM_REQUEST_LIMITER_PATCHED = Symbol("LLM_REQUEST_LIMITER_PATCHED");
 
@@ -24,7 +26,12 @@ function normalizeNonNegativeInteger(value: number | null | undefined): number {
 class ProviderModelRequestLimiter {
   private readonly concurrencyLimit: number;
   private readonly requestIntervalMs: number;
-  private readonly queue: Array<() => void> = [];
+  private readonly queue: Array<{
+    signal?: AbortSignal;
+    abort: () => void;
+    resolve: (permit: { release(): void }) => void;
+    reject: (reason: unknown) => void;
+  }> = [];
   private activeCount = 0;
   private nextStartAt = 0;
   private timer: NodeJS.Timeout | null = null;
@@ -34,30 +41,40 @@ class ProviderModelRequestLimiter {
     this.requestIntervalMs = normalizeNonNegativeInteger(options.requestIntervalMs);
   }
 
-  run<T>(operation: () => Promise<T>): Promise<T> {
-    if (this.concurrencyLimit === 0 && this.requestIntervalMs === 0) {
-      return operation();
-    }
-
-    return new Promise<T>((resolve, reject) => {
-      this.queue.push(() => {
-        this.activeCount += 1;
-        if (this.requestIntervalMs > 0) {
-          this.nextStartAt = Date.now() + this.requestIntervalMs;
-        }
-        operation()
-          .then(resolve, reject)
-          .finally(() => {
-            this.activeCount = Math.max(0, this.activeCount - 1);
-            this.processQueue();
-          });
-      });
+  acquire(signal?: AbortSignal): Promise<{ release(): void }> {
+    return new Promise((resolve, reject) => {
+      if (signal?.aborted) {
+        reject(signal.reason);
+        return;
+      }
+      const entry = { signal, resolve, reject, abort: () => {
+        const index = this.queue.indexOf(entry);
+        if (index < 0) return;
+        this.queue.splice(index, 1);
+        signal?.removeEventListener("abort", entry.abort);
+        reject(signal?.reason);
+        this.processQueue();
+      } };
+      this.queue.push(entry);
+      signal?.addEventListener("abort", entry.abort, { once: true });
       this.processQueue();
     });
   }
 
+  async run<T>(operation: () => Promise<T> | T, signal?: AbortSignal): Promise<T> {
+    const permit = await this.acquire(signal);
+    try {
+      signal?.throwIfAborted();
+      return await operation();
+    } finally {
+      permit.release();
+    }
+  }
+
   private processQueue(): void {
     if (this.queue.length === 0) {
+      if (this.timer) clearTimeout(this.timer);
+      this.timer = null;
       return;
     }
     if (this.concurrencyLimit > 0 && this.activeCount >= this.concurrencyLimit) {
@@ -79,7 +96,16 @@ class ProviderModelRequestLimiter {
     if (!next) {
       return;
     }
-    next();
+    next.signal?.removeEventListener("abort", next.abort);
+    this.activeCount += 1;
+    if (this.requestIntervalMs > 0) this.nextStartAt = Date.now() + this.requestIntervalMs;
+    let released = false;
+    next.resolve({ release: () => {
+      if (released) return;
+      released = true;
+      this.activeCount -= 1;
+      this.processQueue();
+    } });
     this.processQueue();
   }
 }
@@ -142,16 +168,45 @@ export function attachLLMRequestLimiter(llm: ChatOpenAI, options: ProviderModelL
   });
   const originalInvoke = llm.invoke.bind(llm);
   const originalStream = llm.stream.bind(llm);
-  const originalBatch = llm.batch.bind(llm);
+  const streamFallback = new AsyncLocalStorage<{ input: unknown; available: boolean; active: boolean }>();
 
-  patchable.invoke = (async (...args: Parameters<ChatOpenAI["invoke"]>) =>
-    limiter.run(() => originalInvoke(...args))) as ChatOpenAI["invoke"];
+  patchable.invoke = (async (...args: Parameters<ChatOpenAI["invoke"]>) => {
+    // LangChain's disabled-stream adapter invokes this same input under its stream permit.
+    const fallback = streamFallback.getStore();
+    if (fallback?.active && fallback.available && fallback.input === args[0]) {
+      fallback.available = false;
+      return originalInvoke(...args);
+    }
+    return limiter.run(() => originalInvoke(...args), args[1]?.signal);
+  }) as ChatOpenAI["invoke"];
 
-  patchable.stream = (async (...args: Parameters<ChatOpenAI["stream"]>) =>
-    limiter.run(() => originalStream(...args))) as ChatOpenAI["stream"];
+  patchable.stream = (async (...args: Parameters<ChatOpenAI["stream"]>) => {
+    const signal = args[1]?.signal;
+    const permit = await limiter.acquire(signal);
+    const controller = new AbortController();
+    const forwardAbort = () => controller.abort(signal?.reason);
+    signal?.addEventListener("abort", forwardAbort, { once: true });
+    if (signal?.aborted) forwardAbort();
+    const fallback = { input: args[0], available: llm.disableStreaming === true, active: true };
+    const release = () => {
+      signal?.removeEventListener("abort", forwardAbort);
+      fallback.active = false;
+      permit.release();
+    };
+    const withinStream = <T>(operation: () => T) => streamFallback.run(fallback, operation);
+    try {
+      controller.signal.throwIfAborted();
+      const stream = await withinStream(() => originalStream(args[0], { ...args[1], signal: controller.signal }));
+      return holdStreamPermit(stream, release, controller.signal, withinStream, reason => controller.abort(reason));
+    } catch (error) {
+      controller.abort(error);
+      release();
+      throw error;
+    }
+  }) as ChatOpenAI["stream"];
 
-  patchable.batch = (async (...args: Parameters<ChatOpenAI["batch"]>) =>
-    limiter.run(() => originalBatch(...args))) as ChatOpenAI["batch"];
+  // Installed LangChain and Anthropic batches call this.invoke per item. An outer
+  // permit would double-count requests and deadlock a concurrency limit of one.
 
   Object.defineProperty(patchable, LLM_REQUEST_LIMITER_PATCHED, {
     value: true,
