@@ -1,5 +1,4 @@
 import { withPolishRevision } from "../../../modules/novel/quality/application/polish";
-import { buildDirectorCompletionProfile } from "@novelfoundry/shared/types/directorCompletion";
 import { ensurePipelineRoute } from "./planning";
 import { executeChapterWithRetryBudget } from "./execution";
 import type { Prisma } from "@prisma/client";
@@ -239,7 +238,8 @@ export class NovelPipelineExecutor {
           maxRetries,
         });
 
-        await ensurePipelineRoute(novelId, { ...options, ...runtimePayload });
+        const completionProfile = await ensurePipelineRoute(novelId, { ...options, ...runtimePayload });
+        runtimePayload.targetEndChapter = completionProfile.targetChapterCount;
         const [novel, chapters] = await Promise.all([
           prisma.novel.findUnique({ where: { id: novelId } }),
           prisma.chapter.findMany({
@@ -266,7 +266,6 @@ export class NovelPipelineExecutor {
 
         const isAutopilotMode = runtimePayload.controlPolicy?.advanceMode === "full_book_autopilot";
         const autopilotTargetEndOrder = Math.min(options.endOrder, runtimePayload.targetEndChapter ?? options.endOrder);
-        const completionProfile = buildDirectorCompletionProfile(runtimePayload.targetEndChapter ?? options.endOrder);
         let totalCount = isAutopilotMode
           ? Math.max(1, autopilotTargetEndOrder - options.startOrder + 1)
           : Math.max(existingJob?.totalCount ?? 0, chapters.length, 1);

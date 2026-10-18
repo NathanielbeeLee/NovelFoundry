@@ -4,6 +4,22 @@ Volume planning turns a book contract and story macro into volume strategy, volu
 
 A local volume or chapter issue should be repaired at its narrowest scope. Replan the next stages only when a structured decision says the current contract can no longer support them.
 
+## Book scale and execution range
+
+Planning uses the persisted novel's positive estimated chapter count. If no
+estimate exists, use the supplied director or job book target, then the execution
+end as the legacy fallback. The planning target is at least the approved
+execution end. Starting a small batch does not redefine a long novel as a short
+book or authorize prose beyond that batch.
+
+Admission saves the resolved book target in the existing job payload. Execution
+and recovery resolve it again from current book settings and pass the same
+completion profile to route preparation, rolling planning and chapter context.
+Manual/range modes receive that book context without gaining automatic route
+generation. The job's start and end remain the authority for prose execution.
+
+See the [production planning boundary](../../../server/src/services/novel/production/planning/README.md).
+
 ## Strategy input and output budgets
 
 The strategy context budget controls reference selection; it does not set the

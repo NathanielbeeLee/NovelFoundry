@@ -334,6 +334,8 @@ are retained in [NOTICE](NOTICE).
 
 ### 2026-10-18
 
+- Trial batches and resumed chapter runs keep the full novel size in planning
+  context while writing only the selected chapter range.
 - Chapter patch previews and saves require a unique passage in the current
   manuscript, protecting prose when an AI revision points to missing or repeated
   text. Replacement text preserves literal symbols.

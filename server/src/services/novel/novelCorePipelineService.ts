@@ -330,7 +330,8 @@ export class NovelCorePipelineService {
         return this.decoratePipelineJob(existingActiveJob);
       }
 
-      await ensurePipelineRoute(novelId, runtimeOptions);
+      const completionProfile = await ensurePipelineRoute(novelId, runtimeOptions);
+      runtimeOptions.targetEndChapter = completionProfile.targetChapterCount;
       const chapterStats = await prisma.chapter.aggregate({
         where: { novelId },
         _min: { order: true },
@@ -399,7 +400,7 @@ export class NovelCorePipelineService {
             qualityThreshold: options.qualityThreshold,
             repairMode: options.repairMode ?? "light_repair",
             batchPolishInstruction: options.batchPolishInstruction?.trim() || undefined,
-            targetEndChapter: options.targetEndChapter,
+            targetEndChapter: runtimeOptions.targetEndChapter,
             artifactSyncMode: options.artifactSyncMode ?? "adaptive",
           }),
         },

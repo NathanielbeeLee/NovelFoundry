@@ -223,7 +223,7 @@ export class NovelDirectorAutoExecutionRuntime {
                 ? "full_book_autopilot"
                 : "auto_to_execution",
               ...resolveSingleChapterExecutionRange(range, autoExecution),
-              targetEndChapter: range.endOrder,
+              targetEndChapter: autoExecution.completionProfile?.targetChapterCount ?? range.endOrder,
               autoReview: autoExecution.autoReview,
               autoRepair: autoExecution.autoRepair,
               artifactSyncMode: autoExecution.artifactSyncMode,

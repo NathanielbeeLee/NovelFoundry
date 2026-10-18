@@ -29,6 +29,7 @@ test("listRecoverablePipelineJobs excludes cancellation-pending jobs", async () 
 test("startPipelineJob persists maxRetries as a single repair pass", async () => {
   const original = {
     characterCount: prisma.character.count,
+    novelFindUnique: prisma.novel.findUnique,
     generationFindMany: prisma.generationJob.findMany,
     generationCreate: prisma.generationJob.create,
     chapterAggregate: prisma.chapter.aggregate,
@@ -39,6 +40,7 @@ test("startPipelineJob persists maxRetries as a single repair pass", async () =>
   let capturedChapterQuery = null;
   let scheduledOptions = null;
   prisma.character.count = async () => 1;
+  prisma.novel.findUnique = async () => ({ estimatedChapterCount: 80 });
   prisma.generationJob.findMany = async () => [];
   prisma.chapter.aggregate = async () => ({
     _min: { order: 1 },
@@ -102,6 +104,7 @@ test("startPipelineJob persists maxRetries as a single repair pass", async () =>
     assert.equal(terminalContinueCondition.AND[3].riskFlags.not.contains, '"recommendedAction":"replan"');
   } finally {
     prisma.character.count = original.characterCount;
+    prisma.novel.findUnique = original.novelFindUnique;
     prisma.generationJob.findMany = original.generationFindMany;
     prisma.generationJob.create = original.generationCreate;
     prisma.chapter.aggregate = original.chapterAggregate;
