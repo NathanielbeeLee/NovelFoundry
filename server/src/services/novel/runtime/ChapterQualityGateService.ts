@@ -1,13 +1,16 @@
 import type { GenerationContextPackage } from "@novelfoundry/shared/types/chapterRuntime";
+import { resolveQualityScoreState } from "@novelfoundry/shared/types/chapterRuntime/qualitySchemas";
 import { polishPrisma as prisma } from "../../../modules/novel/quality/polishPersistence";
 import {
   ChapterAcceptanceAssessmentService,
+  normalizeAssessment,
   type AcceptanceAssessmentService,
   type ChapterAcceptanceAssessmentResult,
 } from "./ChapterAcceptanceAssessmentService";
 import type { ChapterRuntimeRequestInput } from "./chapterRuntimeSchema";
 import { hashContent, rememberCacheValue } from "./chapterRuntimePackageBuilders";
 import { parseCachedAcceptanceResult } from "./acceptance";
+import { withLlmRequestBudget, type LlmRequestBudget } from "../../../llm/requestBudget";
 
 export interface ChapterQualityGateServiceDeps {
   acceptanceAssessmentService?: AcceptanceAssessmentService;
@@ -19,6 +22,7 @@ export interface RunChapterQualityGatesInput {
   contextPackage: GenerationContextPackage;
   content: string;
   request: ChapterRuntimeRequestInput;
+  qualityRequestBudget?: LlmRequestBudget;
 }
 
 interface GateIdentity {
@@ -121,6 +125,8 @@ export class ChapterQualityGateService {
   private isCacheableAcceptanceResult(result: ChapterAcceptanceAssessmentResult): boolean {
     return Boolean(result?.assessment && Array.isArray(result.assessment.riskTags)
       && Array.isArray(result.assessment.blockingIssues) && Array.isArray(result.issues) && Array.isArray(result.auditReports))
+      && result.score !== null && result.scoreAvailability !== "unavailable"
+      && result.assessment.score !== null && result.assessment.scoreAvailability !== "unavailable"
       && !result.assessment.riskTags.includes("acceptance_gate_unavailable")
       && !result.assessment.blockingIssues.some((issue) => issue.code === "acceptance_gate_unavailable");
   }
@@ -137,7 +143,20 @@ export class ChapterQualityGateService {
     const prepared = await this.acceptanceAssessmentService.prepare?.(assessmentInput);
     const requestKey = prepared?.identityDigest;
     // Legacy/custom assessors without a verifiable prepared contract remain usable.
-    if (!requestKey) return this.acceptanceAssessmentService.assess(assessmentInput, prepared);
+    const assess = async () => {
+      const invoke = () => this.acceptanceAssessmentService.assess(assessmentInput, prepared);
+      const result = await (input.qualityRequestBudget
+        ? withLlmRequestBudget(input.qualityRequestBudget, invoke) : invoke());
+      const assessment = normalizeAssessment({
+        ...result.assessment,
+        ...resolveQualityScoreState({ ...result, riskTags: result.assessment.riskTags, reports: result.auditReports }),
+      }, input.content, assessmentInput.targetWordCount);
+      return {
+        ...result, assessment, score: assessment.score,
+        scoreAvailability: assessment.scoreAvailability, scoreReason: assessment.scoreReason,
+      };
+    };
+    if (!requestKey) return assess();
     const identity: GateIdentity = {
       artifactType: "quality_gate_acceptance", contentHash: hashContent(input.content), requestKey,
       syncMode: `prepared_v2_${requestKey}`,
@@ -154,7 +173,7 @@ export class ChapterQualityGateService {
         rememberCacheValue(this.acceptanceGateCache, key, persisted);
         return persisted;
       }
-      const result = await this.acceptanceAssessmentService.assess(assessmentInput, prepared);
+      const result = await assess();
       if (this.isCacheableAcceptanceResult(result)) {
         await this.writePersistentGateCache({ ...cacheInput, result });
         rememberCacheValue(this.acceptanceGateCache, key, result);

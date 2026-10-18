@@ -35,6 +35,7 @@ intent routing and it does not participate in user decisions.
 | Normal output works but structured output fails | Probe result, schema, model capability, repair telemetry |
 | Responses route calls Chat Completions | Explicit task protocol, provider default, and LLM factory |
 | Prompt misses fields | Prompt id/version, schema, required context, repair and semantic retry |
+| Chapter score is unavailable | Acceptance availability/reason, cached-result policy, local quality debt, then the shared review request budget |
 | A new prompt is inline in a service | Prompt Registry and approved exception list |
 | Retrieval returns nothing | Active version, indexing, bindings, scope, vector store, and trace |
 | A chapter sounds formulaic | Effective style profile, writer prompt version, style detection evidence, rewrite scope, then whole-book voice patterns |

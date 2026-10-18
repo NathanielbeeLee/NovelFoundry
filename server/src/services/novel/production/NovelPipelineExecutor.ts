@@ -439,7 +439,9 @@ export class NovelPipelineExecutor {
 
           if (chapterResult.reviewExecuted && !chapterResult.pass) {
             qualityAlertDetails.push(
-              `第${chapter.order}章（coherence=${final.score.coherence}, repetition=${final.score.repetition}, engagement=${final.score.engagement}）`,
+              final.score
+                ? `第${chapter.order}章（coherence=${final.score.coherence}, repetition=${final.score.repetition}, engagement=${final.score.engagement}）`
+                : `第${chapter.order}章评估未完成，正文已保留，后续可重新审校。`,
             );
             logPipelineWarn("章节最终未达标", {
               jobId,

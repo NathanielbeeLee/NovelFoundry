@@ -4,7 +4,7 @@ import { canonicalStateSnapshotSchema, generationNextActionSchema, chapterStateG
 import { runtimeStateSnapshotSchema, runtimeOpenConflictSchema } from "./stateSchemas.js";
 import { storyWorldSliceSchema } from "../storyWorldSlice";
 import { chapterCharacterHardFactSchema, bookContractContextSchema, macroConstraintContextSchema, volumeWindowContextSchema, chapterMissionContextSchema, chapterWriteContextSchema, chapterReviewContextSchema, chapterRepairContextSchema, chapterExecutionObligationContractSchema } from "./writingContextSchemas.js";
-import { runtimeAuditIssueSchema, runtimeQualityScoreSchema, runtimeAuditReportSchema, runtimeLengthControlSchema, runtimeStyleReviewSchema, chapterAcceptanceStatusSchema, chapterAcceptanceContinuePolicySchema, chapterAcceptanceRepairDirectiveSchema, chapterAcceptanceAssetSyncRecommendationSchema } from "./qualitySchemas.js";
+import { runtimeAuditIssueSchema, runtimeQualityScoreSchema, runtimeAuditReportSchema, runtimeLengthControlSchema, runtimeStyleReviewSchema, chapterAcceptanceStatusSchema, chapterAcceptanceContinuePolicySchema, chapterAcceptanceRepairDirectiveSchema, chapterAcceptanceAssetSyncRecommendationSchema, qualityScoreAvailabilitySchema, resolveQualityScoreState } from "./qualitySchemas.js";
 import { runtimeStyleContextSchema } from "./styleSchemas.js";
 import { runtimeDynamicCharacterOverviewSchema } from "./dynamicCharacterSchemas.js";
 import { runtimePayoffLedgerItemSchema, runtimePayoffLedgerSummarySchema } from "./payoffSchemas.js";
@@ -69,7 +69,9 @@ export const chapterRuntimePackageSchema = z.object({
     generationState: chapterGenerationStateSchema.optional(),
   }),
   audit: z.object({
-    score: runtimeQualityScoreSchema,
+    score: runtimeQualityScoreSchema.nullable(),
+    scoreAvailability: qualityScoreAvailabilitySchema.optional(),
+    scoreReason: z.string().nullable().optional(),
     reports: z.array(runtimeAuditReportSchema),
     openIssues: z.array(runtimeAuditIssueSchema),
     hasBlockingIssues: z.boolean(),
@@ -125,7 +127,10 @@ export const chapterRuntimePackageSchema = z.object({
     repairDirectives: z.array(chapterAcceptanceRepairDirectiveSchema).optional(),
     assetSyncRecommendation: chapterAcceptanceAssetSyncRecommendationSchema.optional(),
   }),
-});
+}).transform((value) => ({
+  ...value,
+  audit: { ...value.audit, ...resolveQualityScoreState({ ...value.audit, riskTags: value.meta.riskTags }) },
+}));
 
 export type RuntimeCharacterResourceContext = z.infer<typeof characterResourceContextSchema>;
 

@@ -16,7 +16,7 @@ interface RecordChapterQualityLoopInput {
   novelId: string;
   chapterId: string;
   chapterOrder?: number | null;
-  score: QualityScore;
+  score: QualityScore | null;
   issues: ReviewIssue[];
   runtimePackage?: ChapterRuntimePackage | null;
   replanRecommendation?: ReplanRecommendation | null;
@@ -86,7 +86,7 @@ function appendRepairHistory(
   terminalAction?: RecordChapterQualityLoopInput["terminalAction"],
   context: ChapterRepairHistoryContext = {},
 ): string | undefined {
-  if (assessment.recommendedAction === "continue" && source !== "repair_recheck") {
+  if (assessment.recommendedAction === "continue" && assessment.scoreAvailability !== "unavailable" && source !== "repair_recheck") {
     return undefined;
   }
   const technicalDetails = [
@@ -218,17 +218,19 @@ export class ChapterQualityLoopService {
         overall: true,
       },
     });
-    const previousScore = qualityReports[1]
+    const previousReport = qualityReports[input.score ? 1 : 0];
+    const previousScore = previousReport
       ? {
-          coherence: qualityReports[1].coherence,
-          repetition: qualityReports[1].repetition,
-          pacing: qualityReports[1].pacing,
-          voice: qualityReports[1].voice,
-          engagement: qualityReports[1].engagement,
-          overall: qualityReports[1].overall,
+          coherence: previousReport.coherence,
+          repetition: previousReport.repetition,
+          pacing: previousReport.pacing,
+          voice: previousReport.voice,
+          engagement: previousReport.engagement,
+          overall: previousReport.overall,
         }
       : null;
-    const terminalAction = assessment.recommendedAction === "continue" ? null : input.terminalAction ?? null;
+    const terminalAction = assessment.recommendedAction === "continue" && assessment.scoreAvailability !== "unavailable"
+      ? null : input.terminalAction ?? null;
     await chapterLifecycleService.applyQualityAssessmentState({
       chapterId: input.chapterId,
       data: buildChapterQualityLoopChapterUpdate(
@@ -242,7 +244,7 @@ export class ChapterQualityLoopService {
           issueCategories: Array.from(new Set(input.issues.map((issue) => issue.category))),
           scoreBefore: previousScore,
           scoreAfter: input.score,
-          qualityReportId: qualityReports[0]?.id ?? null,
+          qualityReportId: input.score ? qualityReports[0]?.id ?? null : null,
           contentVersion: chapter.updatedAt.toISOString(),
           contentLength: (chapter.content ?? "").replace(/\s/g, "").length,
         },

@@ -43,6 +43,35 @@ Keep the recoverable catch around the model invocation; do not extend it over
 database writes or final artifact synchronization. An unavailable acceptance
 assessment is a warning, while a cancelled assessment writes no fallback report.
 
+## Score availability and request limits
+
+An unavailable automatic acceptance judgment has a null score and an explicit
+availability/reason. It is neither a passing nor a failing literary grade.
+Rule-derived estimates and zero are not substitutes for a missing AI score.
+Persisted audit reports and runtime projections retain this distinction; legacy
+reports marked with an unavailable acceptance gate must not regain a numeric
+grade merely because an older payload contains one. Legacy scores without
+availability evidence remain explicitly of unknown provenance.
+
+A secondary prose-check failure leaves a valid narrative judgment intact and
+adds a local warning. Missing acceptance judgment preserves usable prose and
+finalizes quality debt. Score thresholds do not fabricate acceptance or force a
+global replan when no score exists.
+
+One chapter execution shares an eight-request allowance across automatic
+acceptance, local prose repair and recheck. Actual network attempts count,
+including transport retries, structured strategies, JSON repair, semantic
+correction and model fallback. Initial writing, continuation, timeline
+finalization and artifact synchronization remain outside this review allowance.
+A cache hit consumes no requests. Exhaustion stops additional review requests
+and records local debt with usable prose; it cannot turn a local issue into a
+book-level stop.
+
+This allowance is invocation-local. Explicit retry, resume or restart starts a
+new allowance; existing outer retry limits own re-entry. It is not a persisted
+cross-run spending cap. See the
+[request-budget owner](../../../server/src/llm/requestBudget/README.md).
+
 ## Acceptance reuse
 
 An acceptance result belongs to the exact prepared review, not just the chapter

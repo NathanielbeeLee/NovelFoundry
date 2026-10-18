@@ -11,10 +11,24 @@ import {
   isOpenAIEndpointNotFoundError,
 } from "../openAICompatibleEndpoints";
 import type { OpenAIRequestProtocol } from "./requestProtocol";
+import { isLlmRequestBudgetExhausted } from "../requestBudget";
 import {
   normalizeResponsesApiResponse,
   normalizeResponsesApiStream,
 } from "./responsesCompatibility";
+
+function stopRetriesOnExhaustedBudget(model: ChatOpenAI | ChatOpenAIResponses | ChatOpenAICompletions): void {
+  // Preserve LangChain's default status/cancellation policy while adding one
+  // terminal failure. The SDK wraps fetch errors in APIConnectionError.cause.
+  const caller = model.caller as unknown as {
+    onFailedAttempt?: (error: unknown) => unknown;
+  };
+  const onFailedAttempt = caller.onFailedAttempt;
+  caller.onFailedAttempt = (error) => {
+    if (isLlmRequestBudgetExhausted(error)) throw error;
+    return onFailedAttempt?.call(caller, error);
+  };
+}
 
 class CompatibleChatOpenAIResponses extends ChatOpenAIResponses {
   private readonly endpointFallback: ChatOpenAIResponses | null;
@@ -22,6 +36,7 @@ class CompatibleChatOpenAIResponses extends ChatOpenAIResponses {
 
   constructor(fields: ChatOpenAIFields) {
     super(fields);
+    stopRetriesOnExhaustedBudget(this);
     const baseURL = fields.configuration?.baseURL;
     const fallbackBaseURL = typeof baseURL === "string"
       ? getOpenAICompatibleBaseUrlCandidates(baseURL)[1]
@@ -35,6 +50,7 @@ class CompatibleChatOpenAIResponses extends ChatOpenAIResponses {
         },
       })
       : null;
+    if (this.endpointFallback) stopRetriesOnExhaustedBudget(this.endpointFallback);
   }
 
   override completionWithRetry(
@@ -109,6 +125,7 @@ class CompatibleChatOpenAICompletions extends ChatOpenAICompletions {
 
   constructor(fields: ChatOpenAIFields) {
     super(fields);
+    stopRetriesOnExhaustedBudget(this);
     const baseURL = fields.configuration?.baseURL;
     const fallbackBaseURL = typeof baseURL === "string"
       ? getOpenAICompatibleBaseUrlCandidates(baseURL)[1]
@@ -122,6 +139,7 @@ class CompatibleChatOpenAICompletions extends ChatOpenAICompletions {
         },
       })
       : null;
+    if (this.endpointFallback) stopRetriesOnExhaustedBudget(this.endpointFallback);
   }
 
   override completionWithRetry(
@@ -179,6 +197,7 @@ class ProtocolBoundChatOpenAI extends ChatOpenAI {
         : { completions: new CompatibleChatOpenAICompletions(responsesFields) }),
     });
     this.boundRequestProtocol = requestProtocol;
+    stopRetriesOnExhaustedBudget(this);
   }
 
   protected override _useResponsesApi(

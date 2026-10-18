@@ -88,15 +88,15 @@ test("changed effective identity, target length or title invalidates both cache 
   assert.equal(fixture.stats().calls, 4);
 });
 
-test("old, malformed or mismatched cache rows are misses and never become content-only reuse", async (t) => {
-  for (const mode of ["old", "mismatch", "malformed"]) {
+test("old, malformed, unavailable numeric or mismatched cache rows are misses and never become content-only reuse", async (t) => {
+  for (const mode of ["old", "mismatch", "malformed", "unavailable numeric"]) {
     await t.test(mode, async (t) => {
       const fixture = setup(t, { persisted: (where) => {
         const identity = where.novelId_chapterId_contentHash_artifactType_syncMode;
         return { status: "succeeded", metadataJson: JSON.stringify({
           schemaVersion: mode === "old" ? 1 : 2, gate: "acceptance", contentHash: identity.contentHash,
           requestKey: mode === "mismatch" ? "different" : identity.syncMode.slice("prepared_v2_".length),
-          result: mode === "malformed" ? { assessment: { riskTags: [], blockingIssues: [] }, issues: [], auditReports: [] } : result(),
+          result: mode === "malformed" ? { assessment: { riskTags: [], blockingIssues: [] }, issues: [], auditReports: [] } : result(mode === "unavailable numeric"),
         }) };
       } });
       await fixture.make().runAcceptanceGate(input());

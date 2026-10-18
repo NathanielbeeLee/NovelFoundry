@@ -31,6 +31,80 @@ export const runtimeQualityScoreSchema = z.object({
   overall: z.number(),
 });
 
+export const qualityScoreAvailabilitySchema = z.enum(["available", "unavailable", "not_requested", "legacy_unknown"]);
+export type QualityScoreAvailability = z.infer<typeof qualityScoreAvailabilitySchema>;
+
+type ScoreReport = {
+  legacyScoreJson?: string | null;
+  issues?: readonly { code: string }[];
+};
+
+/** Old fallback records can contain plausible numbers; their unavailable marker wins. */
+export function isUnavailableQualityScoreReport(report: ScoreReport): boolean {
+  if (report.issues?.some((issue) => issue.code === "acceptance_gate_unavailable")) return true;
+  try {
+    const metadata = JSON.parse(report.legacyScoreJson ?? "null");
+    return metadata?.scoreAvailability === "unavailable"
+      || metadata?.scoreAvailability === "not_requested"
+      || metadata?.riskTags?.includes("acceptance_gate_unavailable") === true;
+  } catch {
+    return false;
+  }
+}
+
+export function resolveQualityScoreState(input: {
+  score?: unknown;
+  scoreAvailability?: QualityScoreAvailability;
+  scoreReason?: string | null;
+  riskTags?: readonly string[];
+  reports?: readonly ScoreReport[];
+  openIssues?: readonly { code: string }[];
+}): { score: RuntimeQualityScore | null; scoreAvailability: QualityScoreAvailability; scoreReason: string | null } {
+  const unavailable = input.scoreAvailability === "unavailable"
+    || input.scoreAvailability === "not_requested"
+    || input.riskTags?.includes("acceptance_gate_unavailable")
+    || input.openIssues?.some((issue) => issue.code === "acceptance_gate_unavailable")
+    || input.reports?.some(isUnavailableQualityScoreReport);
+  const parsed = runtimeQualityScoreSchema.safeParse(input.score);
+  if (unavailable || !parsed.success) {
+    return {
+      score: null,
+      scoreAvailability: input.scoreAvailability === "not_requested" ? "not_requested" : "unavailable",
+      scoreReason: input.scoreReason ?? "章节评估未完成，可保留正文并重新审校。",
+    };
+  }
+  return {
+    score: parsed.data,
+    scoreAvailability: input.scoreAvailability ?? "legacy_unknown",
+    scoreReason: input.scoreReason ?? null,
+  };
+}
+
+/** Select current narrative evidence, keeping older numeric rows historical. */
+export function resolveLatestNarrativeScoreEvidence<T extends ScoreReport & { createdAt?: string | Date }>(reports: readonly T[]) {
+  let latest: (ReturnType<typeof resolveQualityScoreState> & { report: T; evaluatedAt: number }) | null = null;
+  for (const report of reports) {
+    let metadata;
+    try { metadata = JSON.parse(report.legacyScoreJson ?? "null"); } catch { metadata = null; }
+    if (typeof metadata?.acceptanceStatus !== "string" && !metadata?.manualReview
+      && !isUnavailableQualityScoreReport(report)) continue;
+    const timestamp = report.createdAt instanceof Date ? report.createdAt.getTime() : Date.parse(report.createdAt ?? "");
+    const evaluatedAt = Number.isFinite(timestamp) ? timestamp : 0;
+    if (latest && latest.evaluatedAt >= evaluatedAt) continue;
+    const availability = qualityScoreAvailabilitySchema.safeParse(metadata?.scoreAvailability);
+    latest = {
+      ...resolveQualityScoreState({
+        score: metadata,
+        scoreAvailability: availability.success ? availability.data : metadata?.manualReview ? "available" : undefined,
+        scoreReason: typeof metadata?.scoreReason === "string" ? metadata.scoreReason : null,
+        reports: [report],
+      }),
+      report, evaluatedAt,
+    };
+  }
+  return latest;
+}
+
 export const chapterAcceptanceStatusSchema = z.enum(["accepted", "repairable", "needs_manual_review", "continue_with_risk"]);
 export const chapterAcceptanceContinuePolicySchema = z.enum(["continue", "repair_once", "pause"]);
 export const chapterAcceptanceRepairDirectiveSchema = z.object({

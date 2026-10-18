@@ -217,14 +217,8 @@ test("runPipelineChapterWithRuntime skips review and repair when autoReview is d
   assert.equal(result.retryCountUsed, 0);
   assert.deepEqual(result.issues, []);
   assert.equal(result.runtimePackage, null);
-  assert.deepEqual(result.score, {
-    coherence: 100,
-    pacing: 100,
-    repetition: 100,
-    engagement: 100,
-    voice: 100,
-    overall: 100,
-  });
+  assert.equal(result.score, null);
+  assert.equal(result.scoreAvailability, "not_requested");
 });
 
 test("runPipelineChapterWithRuntime does not approve when timeline check fails", async () => {
@@ -884,15 +878,16 @@ test("runPipelineChapterWithRuntime defers acceptance gate unavailable risk with
       },
     );
 
-    assert.deepEqual(stages, ["generating_chapters", "reviewing", "repairing"]);
+    assert.deepEqual(stages, ["generating_chapters", "reviewing"]);
     assert.equal(reviewCount, 1);
     assert.equal(result.pass, false);
-    assert.equal(result.retryCountUsed, 1);
-    assert.equal(result.qualityDebtAttribution.repairAttemptsUsed, 1);
+    assert.equal(result.score, null);
+    assert.equal(result.scoreAvailability, "unavailable");
+    assert.equal(result.retryCountUsed, 0);
+    assert.equal(result.qualityDebtAttribution.repairAttemptsUsed, 0);
     assert.equal(result.qualityDebtAttribution.repairAttemptsAllowed, 1);
-    assert.equal(result.recoverableRepairFailure.message, "章节接收判断暂时不可用，正文已保留，后续需要重新审校或人工复查。");
-    assert.deepEqual(result.recoverableRepairFailure.failureTypes, ["review_gate_unavailable"]);
-    assert.deepEqual(needsRepairMarked, ["chapter-1"]);
+    assert.equal(result.recoverableRepairFailure, null);
+    assert.deepEqual(needsRepairMarked, []);
     assert.deepEqual(savedDrafts, [{
       content: "生成后的正文可保留。",
       generationState: "drafted",
@@ -1689,6 +1684,8 @@ test("acceptance output and transport failure remain local warnings, but cancell
           const result = await assess();
           assert.equal(result.assessment.status, "continue_with_risk");
           assert.equal(result.assessment.continuePolicy, "continue");
+          assert.equal(result.score, null);
+          assert.equal(result.scoreAvailability, "unavailable");
           assert.deepEqual(result.assessment.riskTags, ["acceptance_gate_unavailable"]);
           assert.equal(reportsWritten, 1);
         } else {

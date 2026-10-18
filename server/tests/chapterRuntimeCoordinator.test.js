@@ -698,6 +698,11 @@ test("finalizeChapterContent writes only acceptance-covered mustHitNow facts bef
     return { count: data.length };
   };
   prisma.$transaction = async (callback) => callback({
+    $executeRaw: async (sql, ...values) => {
+      assert.equal(sql.join("?"), 'UPDATE "Chapter" SET "id" = "id" WHERE "id" = ? AND "novelId" = ?');
+      assert.deepEqual(values, ["chapter-1", "novel-1"]);
+      return 1;
+    },
     chapter: {
       findFirst: async () => ({ content: "正文写出了主角当众拒绝婚约，但没有拿到钥匙。", updatedAt: new Date() }),
       updateMany: async () => ({ count: 1 }),

@@ -8,6 +8,7 @@ import { createAnthropicLLM } from "./anthropicClient";
 import { attachLLMDebugLogging } from "./debugLogging";
 import { attachLLMRequestLimiter } from "./requestLimiter";
 import { attachLLMRequestGuard } from "./requestGuard";
+import { consumeLlmRequestBudget } from "./requestBudget";
 import { resolveProviderReasoningBehavior } from "./reasoning";
 import {
   createOpenAIProtocolClient,
@@ -396,13 +397,17 @@ export function buildOpenAICompatibleDefaultHeaders(authMode: ProviderAuthMode, 
 
 // LangChain normalizes defaultHeaders and drops null values, so authentication
 // removal must also happen at the final fetch boundary for anonymous gateways.
-export function buildOpenAICompatibleFetch(authMode: ProviderAuthMode, apiKey?: string): typeof fetch | undefined {
-  if (authMode === "bearer") return undefined;
+export function buildOpenAICompatibleFetch(authMode: ProviderAuthMode, apiKey?: string): typeof fetch {
   return async (input, init) => {
+    if (authMode === "bearer") {
+      consumeLlmRequestBudget();
+      return globalThis.fetch(input, init);
+    }
     const headers = new Headers(init?.headers ?? (input instanceof Request ? input.headers : undefined));
     headers.delete("authorization");
     headers.delete("x-api-key");
     if (authMode === "x-api-key" && apiKey) headers.set("x-api-key", apiKey);
+    consumeLlmRequestBudget();
     return globalThis.fetch(input, { ...init, headers });
   };
 }

@@ -230,7 +230,8 @@ export class ChapterRepairStreamRuntime {
       deferArtifactBackgroundSync: true,
       scheduleDeferredArtifactBackgroundSync: false,
     });
-    const pass = !finalized.needsRepair && isPass(finalized.runtimePackage.audit.score);
+    const pass = !finalized.needsRepair && finalized.runtimePackage.audit.score !== null
+      && isPass(finalized.runtimePackage.audit.score);
     await this.deps.artifactSyncService.syncChapterArtifacts(
       input.novelId,
       input.chapterId,

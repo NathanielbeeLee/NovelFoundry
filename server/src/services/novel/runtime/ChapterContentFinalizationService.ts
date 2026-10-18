@@ -18,9 +18,10 @@ import {
 } from "./chapterRuntimePackageBuilders";
 import {
   buildProseQualityAuditReport,
-  detectProseQuality,
+  tryDetectProseQuality,
 } from "./proseQuality/ProseQualityDetector";
 import type { ChapterLifecycleService } from "./lifecycle";
+import type { LlmRequestBudget } from "../../../llm/requestBudget";
 
 export interface ChapterContentFinalizationAgentRuntime {
   finishChapterGenRun: (runId: string, summary: string, durationMs: number) => Promise<void>;
@@ -46,6 +47,7 @@ export interface FinalizeChapterContentInput {
   startMs: number | null;
   deferArtifactBackgroundSync?: boolean;
   scheduleDeferredArtifactBackgroundSync?: boolean;
+  qualityRequestBudget?: LlmRequestBudget;
 }
 
 export interface FinalizeChapterContentResult {
@@ -81,10 +83,11 @@ export class ChapterContentFinalizationService {
       contextPackage: input.contextPackage,
       content: finalContent,
       request: input.request,
+      qualityRequestBudget: input.qualityRequestBudget,
     });
     input.request.signal?.throwIfAborted();
-    const proseQualityReport = detectProseQuality(finalContent);
-    const proseQualityAuditReport = buildProseQualityAuditReport({
+    const proseQualityReport = tryDetectProseQuality(finalContent);
+    const proseQualityAuditReport = proseQualityReport && buildProseQualityAuditReport({
       novelId: input.novelId,
       chapterId: input.chapterId,
       report: proseQualityReport,
@@ -94,6 +97,8 @@ export class ChapterContentFinalizationService {
     ));
     const auditResult = {
       score: acceptance.score,
+      scoreAvailability: acceptance.scoreAvailability,
+      scoreReason: acceptance.scoreReason,
       issues: acceptance.issues,
       auditReports: proseQualityAuditReport && !acceptanceHasProseReport
         ? [...acceptance.auditReports, proseQualityAuditReport]
@@ -127,6 +132,7 @@ export class ChapterContentFinalizationService {
     const needsRepair = acceptance.assessment.status === "repairable"
       || acceptance.assessment.status === "needs_manual_review"
       || runtimePackage.audit.hasBlockingIssues;
+    const hasQualityDebt = needsRepair || runtimePackage.audit.score === null;
     input.request.signal?.throwIfAborted();
     const timelineFinalization = await this.timelineFinalizer.finalizeCurrentContent({
       novelId: input.novelId,
@@ -134,16 +140,16 @@ export class ChapterContentFinalizationService {
       content: finalContent,
       contextPackage: input.contextPackage,
       request: input.request,
-      mode: needsRepair ? "degraded" : "stable",
+      mode: hasQualityDebt ? "degraded" : "stable",
       sourceStage: "chapter_content_finalization",
-      qualityDebt: needsRepair,
+      qualityDebt: hasQualityDebt,
     });
     if (!timelineFinalization.checkpointWritten) {
       throw new Error("Chapter timeline finalization is still running");
     }
     input.request.signal?.throwIfAborted();
     await this.markChapterStatus(input.chapterId, needsRepair ? "needs_repair" : "pending_review");
-    if (!needsRepair) {
+    if (!hasQualityDebt) {
       // 保证义务账本在下一章 JIT 上下文组装前完成；失败只告警，不阻断定稿返回。
       try {
         input.request.signal?.throwIfAborted();
@@ -168,7 +174,7 @@ export class ChapterContentFinalizationService {
     }
 
     input.request.signal?.throwIfAborted();
-    if (!needsRepair && input.deferArtifactBackgroundSync && input.scheduleDeferredArtifactBackgroundSync !== false) {
+    if (!hasQualityDebt && input.deferArtifactBackgroundSync && input.scheduleDeferredArtifactBackgroundSync !== false) {
       await this.artifactSyncService.syncChapterArtifacts(
         input.novelId,
         input.chapterId,
@@ -189,7 +195,7 @@ export class ChapterContentFinalizationService {
     await this.finishTraceRun(input.runId, finalContent.length, input.startMs);
 
     input.request.signal?.throwIfAborted();
-    if (!needsRepair && !currentPolishScope()) {
+    if (!hasQualityDebt && !currentPolishScope()) {
       void novelEventBus.emit({
         type: "chapter:finalized",
         payload: {

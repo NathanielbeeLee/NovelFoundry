@@ -4,16 +4,18 @@ import type {
   GenerationContextPackage,
 } from "@novelfoundry/shared/types/chapterRuntime";
 import type { LLMProvider } from "@novelfoundry/shared/types/llm";
+import { resolveQualityScoreState, type QualityScoreAvailability } from "@novelfoundry/shared/types/chapterRuntime/qualitySchemas";
+import { runWithLlmRequestBudget } from "../../../llm/requestBudget";
 import { polishPrisma as prisma } from "../../../modules/novel/quality/polishPersistence";
 import { runPreparedStructuredPrompt, runStructuredPrompt } from "../../../prompting/core/promptRunner";
 import { resolveTargetWordRange } from "../../../prompting/prompts/novel/chapterLayeredContextShared";
 import {
   type ChapterAcceptanceAssessmentOutput,
 } from "../../../prompting/prompts/novel/chapterAcceptance.prompts";
-import { buildAcceptancePromptRequest, prepareChapterAcceptance, type PreparedChapterAcceptance } from "./acceptance";
+import { buildAcceptancePromptRequest, prepareChapterAcceptance, type PreparedChapterAcceptance, type ChapterAcceptanceAssessment } from "./acceptance";
 import { openConflictService } from "../../state/OpenConflictService";
-import { normalizeScore, ruleScore } from "../novelP0Utils";
-import { detectProseQuality } from "./proseQuality/ProseQualityDetector";
+import { normalizeScore } from "../novelP0Utils";
+import { tryDetectProseQuality } from "./proseQuality/ProseQualityDetector";
 import { isRecoverableChapterAiFailure } from "./repair/ChapterRepairFailurePolicy";
 
 export interface ChapterAcceptanceAssessmentInput {
@@ -31,8 +33,10 @@ export interface ChapterAcceptanceAssessmentInput {
 }
 
 export interface ChapterAcceptanceAssessmentResult {
-  assessment: ChapterAcceptanceAssessmentOutput;
-  score: QualityScore;
+  assessment: ChapterAcceptanceAssessment;
+  score: QualityScore | null;
+  scoreAvailability: QualityScoreAvailability;
+  scoreReason: string | null;
   issues: ReviewIssue[];
   auditReports: AuditReport[];
 }
@@ -140,10 +144,10 @@ function shouldDropLengthIssue(input: {
 }
 
 function reconcileLengthAssessment(
-  output: ChapterAcceptanceAssessmentOutput,
+  output: ChapterAcceptanceAssessmentOutput | ChapterAcceptanceAssessment,
   content: string,
   targetWordCount?: number | null,
-): ChapterAcceptanceAssessmentOutput {
+): ChapterAcceptanceAssessmentOutput | ChapterAcceptanceAssessment {
   const range = resolveTargetWordRange(targetWordCount);
   if (range.minWordCount == null && range.maxWordCount == null) {
     return output;
@@ -167,12 +171,23 @@ function reconcileLengthAssessment(
 }
 
 export function normalizeAssessment(
-  output: ChapterAcceptanceAssessmentOutput,
+  output: ChapterAcceptanceAssessmentOutput | ChapterAcceptanceAssessment,
   content: string,
   targetWordCount?: number | null,
-): ChapterAcceptanceAssessmentOutput {
+): ChapterAcceptanceAssessment {
   const reconciled = reconcileLengthAssessment(output, content, targetWordCount);
-  const score = normalizeScore(reconciled.score ?? ruleScore(content));
+  const scoreState = resolveQualityScoreState({
+    ...reconciled,
+    scoreAvailability: "scoreAvailability" in reconciled ? reconciled.scoreAvailability : "available",
+  });
+  if (!scoreState.score) {
+    return {
+      ...buildFallbackAssessment(scoreState.scoreReason),
+      blockingIssues: reconciled.blockingIssues,
+      riskTags: Array.from(new Set([...reconciled.riskTags, "acceptance_gate_unavailable"])),
+    };
+  }
+  const score = normalizeScore(scoreState.score);
   const missingObligations = reconciled.missingObligations ?? [];
   const hasHighRisk = reconciled.blockingIssues.some((issue) => issue.severity === "high" || issue.severity === "critical");
   const hasRepairWork = reconciled.blockingIssues.length > 0
@@ -204,6 +219,8 @@ export function normalizeAssessment(
     ...reconciled,
     status,
     score,
+    scoreAvailability: scoreState.scoreAvailability,
+    scoreReason: scoreState.scoreReason,
     continuePolicy,
     riskTags: Array.from(new Set(reconciled.riskTags.map((item) => item.trim()).filter(Boolean))),
     blockingIssues: reconciled.blockingIssues.slice(0, 5),
@@ -212,11 +229,12 @@ export function normalizeAssessment(
   };
 }
 
-function buildFallbackAssessment(content: string): ChapterAcceptanceAssessmentOutput {
-  const score = ruleScore(content);
+function buildFallbackAssessment(reason?: string | null): ChapterAcceptanceAssessment {
   return {
     status: "continue_with_risk",
-    score,
+    score: null,
+    scoreAvailability: "unavailable",
+    scoreReason: reason ?? "章节接收评估未返回可用结构化结果，可重新审校。",
     summary: "正文已生成，接收闸门未完成结构化判断，系统将保留正文并标记后续复查风险。",
     blockingIssues: [{
       severity: "medium",
@@ -245,6 +263,10 @@ export class ChapterAcceptanceAssessmentService {
   }
 
   async assess(input: ChapterAcceptanceAssessmentInput, prepared?: PreparedChapterAcceptance): Promise<ChapterAcceptanceAssessmentResult> {
+    return runWithLlmRequestBudget({ label: "chapter.acceptance", maxRequests: 8 }, () => this.assessWithinBudget(input, prepared));
+  }
+
+  private async assessWithinBudget(input: ChapterAcceptanceAssessmentInput, prepared?: PreparedChapterAcceptance): Promise<ChapterAcceptanceAssessmentResult> {
     const invocation = prepared
       ? runPreparedStructuredPrompt(prepared.prompt).then((result) => result.output)
       : this.invokeAssessment(input);
@@ -252,10 +274,10 @@ export class ChapterAcceptanceAssessmentService {
       if (!isRecoverableChapterAiFailure(error)) {
         throw error;
       }
-      return buildFallbackAssessment(input.content);
+      return buildFallbackAssessment();
     });
-    const proseQuality = detectProseQuality(input.content);
-    const proseIssues = proseQuality.findings.slice(0, 5).map((finding) => ({
+    const proseQuality = tryDetectProseQuality(input.content);
+    const proseIssues = (proseQuality?.findings ?? []).slice(0, 5).map((finding) => ({
       severity: finding.severity,
       category: "voice" as const,
       code: finding.code,
@@ -265,9 +287,9 @@ export class ChapterAcceptanceAssessmentService {
     const normalized = normalizeAssessment({
       ...assessment,
       blockingIssues: [...assessment.blockingIssues, ...proseIssues],
-      riskTags: [...assessment.riskTags, ...proseQuality.findings.map((finding) => finding.code)],
+      riskTags: [...assessment.riskTags, ...(proseQuality?.findings.map((finding) => finding.code) ?? ["prose_check_unavailable"])],
     }, input.content, input.targetWordCount);
-    const score = normalizeScore(normalized.score);
+    const score = normalized.score;
     const issues = normalized.blockingIssues.map((issue) => ({
       severity: issue.severity,
       category: categoryToReviewIssueCategory(issue.category),
@@ -285,6 +307,8 @@ export class ChapterAcceptanceAssessmentService {
     return {
       assessment: normalized,
       score,
+      scoreAvailability: normalized.scoreAvailability,
+      scoreReason: normalized.scoreReason,
       issues,
       auditReports,
     };
@@ -297,8 +321,8 @@ export class ChapterAcceptanceAssessmentService {
 
   private async persistAcceptanceReports(
     input: ChapterAcceptanceAssessmentInput,
-    assessment: ChapterAcceptanceAssessmentOutput,
-    score: QualityScore,
+    assessment: ChapterAcceptanceAssessment,
+    score: QualityScore | null,
   ): Promise<AuditReport[]> {
     const grouped = new Map<AuditType, AcceptanceIssue[]>();
     for (const issue of assessment.blockingIssues) {
@@ -309,25 +333,36 @@ export class ChapterAcceptanceAssessmentService {
       grouped.set("mode_fit", []);
     }
     const auditTypes = Array.from(grouped.keys());
+    const currentReportIds: string[] = [];
     await prisma.$transaction(async (tx) => {
-      await tx.auditReport.deleteMany({
-        where: {
-          novelId: input.novelId,
-          chapterId: input.chapterId,
-          auditType: { in: auditTypes },
-        },
+      const previousReports = await tx.auditReport.findMany({
+        where: { novelId: input.novelId, chapterId: input.chapterId },
+        select: { id: true, legacyScoreJson: true },
       });
+      const previousAcceptanceIds = previousReports.filter((report) => {
+        try {
+          const metadata = JSON.parse(report.legacyScoreJson ?? "null");
+          return typeof metadata?.acceptanceStatus === "string" && !metadata?.manualReview;
+        } catch { return false; }
+      }).map((report) => report.id);
+      // Replace the whole owned acceptance set even when this attempt produces
+      // different audit categories. Manual and other audit owners are retained.
+      if (previousAcceptanceIds.length > 0) {
+        await tx.auditReport.deleteMany({ where: { id: { in: previousAcceptanceIds } } });
+      }
       for (const auditType of auditTypes) {
         const issues = grouped.get(auditType) ?? [];
-        await tx.auditReport.create({
+        const created = await tx.auditReport.create({
           data: {
             novelId: input.novelId,
             chapterId: input.chapterId,
             auditType,
-            overallScore: score.overall,
+            overallScore: score?.overall ?? null,
             summary: assessment.summary,
             legacyScoreJson: JSON.stringify({
               ...score,
+              scoreAvailability: assessment.scoreAvailability,
+              scoreReason: assessment.scoreReason,
               acceptanceStatus: assessment.status,
               continuePolicy: assessment.continuePolicy,
               riskTags: assessment.riskTags,
@@ -346,13 +381,14 @@ export class ChapterAcceptanceAssessmentService {
             },
           },
         });
+        currentReportIds.push(created.id);
       }
     });
     return prisma.auditReport.findMany({
       where: {
         novelId: input.novelId,
         chapterId: input.chapterId,
-        auditType: { in: auditTypes },
+        id: { in: currentReportIds },
       },
       include: {
         issues: {

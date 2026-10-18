@@ -1,6 +1,7 @@
 import type { LLMProvider } from "@novelfoundry/shared/types/llm";
 import type { AuditReport, AuditType, QualityScore, ReviewIssue } from "@novelfoundry/shared/types/novel";
 import type { ChapterRuntimePackage, GenerationContextPackage } from "@novelfoundry/shared/types/chapterRuntime";
+import { isUnavailableQualityScoreReport } from "@novelfoundry/shared/types/chapterRuntime/qualitySchemas";
 import { prisma } from "../../db/prisma";
 import { AppError } from "../../middleware/errorHandler";
 import { manualChapterAuditPrompt } from "../../prompting/prompts/audit/manual/prompts";
@@ -262,7 +263,7 @@ export class AuditService {
   }
 
   async listChapterAuditReports(novelId: string, chapterId: string): Promise<AuditReport[]> {
-    return prisma.auditReport.findMany({
+    const reports = await prisma.auditReport.findMany({
       where: { novelId, chapterId },
       include: {
         issues: {
@@ -270,7 +271,11 @@ export class AuditService {
         },
       },
       orderBy: [{ createdAt: "desc" }, { auditType: "asc" }],
-    }) as unknown as Promise<AuditReport[]>;
+    });
+    return reports.map((report) => ({
+      ...report,
+      overallScore: isUnavailableQualityScoreReport(report) ? null : report.overallScore,
+    })) as unknown as AuditReport[];
   }
 
   async resolveIssues(novelId: string, issueIds: string[]) {

@@ -3,6 +3,7 @@ import type { LLMProvider } from "@novelfoundry/shared/types/llm";
 import type { ModelRouteRequestProtocol } from "@novelfoundry/shared/types/novel";
 import { isBuiltInProvider } from "./providers";
 import { isDeepSeekThinkingModeProvider, isGlmThinkingModeProvider } from "./reasoning";
+import { isLlmRequestBudgetExhausted } from "./requestBudget";
 
 export type StructuredExecutionMode = "plain" | "structured";
 export type StructuredOutputStrategy = "json_schema" | "json_object" | "prompt_json";
@@ -351,6 +352,7 @@ export function classifyStructuredOutputFailure(input: {
   error?: unknown;
   rawContent?: string;
 }): StructuredOutputErrorCategory {
+  if (isLlmRequestBudgetExhausted(input.error)) return "usage_budget_exceeded";
   const message = input.error instanceof Error
     ? input.error.message
     : typeof input.error === "string"

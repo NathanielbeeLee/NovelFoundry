@@ -334,6 +334,9 @@ are retained in [NOTICE](NOTICE).
 
 ### 2026-10-18
 
+- Unavailable chapter audits show an unscored result and preserve usable prose
+  as review work. Nested review and repair retries share a request limit while
+  later chapters can continue with visible quality debt.
 - Streaming generation respects model concurrency limits through completion,
   with cancellation and timeouts that close stalled requests. Interrupted
   Anthropic responses require a fresh attempt instead of appearing complete.

@@ -6,6 +6,7 @@ import { relaxGeneratedContentSchema } from "./generatedContentSchema";
 import type { ResolvedLLMClientOptions } from "./factory";
 import { repairWithLlm } from "./structuredInvokeRepair";
 import { isLlmInvocationCancelled } from "./streamOutcome";
+import { isLlmRequestBudgetExhausted } from "./requestBudget";
 import {
   classifyStructuredOutputFailure,
   resolveStructuredOutputProfile,
@@ -439,7 +440,7 @@ export async function parseStructuredLlmRawContentDetailed<T>(
           tokenUsage: input.tokenUsage ?? null,
         };
       } catch (repairError) {
-        if (isLlmInvocationCancelled(repairError)) {
+        if (isLlmInvocationCancelled(repairError) || isLlmRequestBudgetExhausted(repairError)) {
           throw repairError;
         }
         if (attempt >= maxRepairAttempts) {
@@ -528,7 +529,7 @@ export async function parseStructuredLlmRawContentDetailed<T>(
         tokenUsage: input.tokenUsage ?? null,
       };
     } catch (error) {
-      if (isLlmInvocationCancelled(error)) {
+      if (isLlmInvocationCancelled(error) || isLlmRequestBudgetExhausted(error)) {
         throw error;
       }
       if (attempt >= maxRepairAttempts) {

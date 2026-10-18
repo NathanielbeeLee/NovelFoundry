@@ -111,7 +111,9 @@ function HistoryCard({ entry }: { entry: ParsedChapterRepairHistoryEntry }) {
   const issueLabels = Array.from(new Set(entry.issueCategories.map((category) => (
     ISSUE_CATEGORY_LABELS[category] ?? category
   ))));
-  const actionLabel = entry.recommendedAction
+  const actionLabel = entry.result === "deferred" && entry.recommendedAction === "continue"
+    ? "保留正文，等待复查"
+    : entry.recommendedAction
     ? REPAIR_HISTORY_ACTION_LABELS[entry.recommendedAction] ?? entry.recommendedAction
     : null;
 

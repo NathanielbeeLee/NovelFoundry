@@ -1,4 +1,5 @@
 import type { ChapterRuntimePackage } from "@novelfoundry/shared/types/chapterRuntime";
+import { resolveQualityScoreState, isUnavailableQualityScoreReport, resolveLatestNarrativeScoreEvidence } from "@novelfoundry/shared/types/chapterRuntime/qualitySchemas";
 import type { AuditReport, ReplanRecommendation, ReplanResult, StoryPlan, StoryStateSnapshot } from "@novelfoundry/shared/types/novel";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -64,25 +65,25 @@ function buildOpenConflictView(runtimePackage: ChapterRuntimePackage | null) {
 
 function buildAuditView(runtimePackage: ChapterRuntimePackage | null, auditReports: AuditReport[] | undefined) {
   if (runtimePackage?.audit) {
-    return runtimePackage.audit;
+    return {
+      ...runtimePackage.audit,
+      ...resolveQualityScoreState({ ...runtimePackage.audit, riskTags: runtimePackage.meta?.riskTags }),
+    };
   }
   const reports = auditReports ?? [];
+  const narrativeEvidence = resolveLatestNarrativeScoreEvidence(reports);
   const openIssues = reports.flatMap((report) => report.issues).filter((issue) => issue.status === "open");
   const reportScores = reports
+    .filter((report) => !isUnavailableQualityScoreReport(report))
     .map((report) => report.overallScore ?? null)
     .filter((score): score is number => typeof score === "number");
-  const overall = reportScores.length > 0
+  const overall = narrativeEvidence ? narrativeEvidence.score?.overall ?? null : reportScores.length > 0
     ? Math.round(reportScores.reduce((sum, score) => sum + score, 0) / reportScores.length)
-    : 0;
+    : null;
   return {
-    score: {
-      coherence: overall,
-      repetition: overall,
-      pacing: overall,
-      voice: overall,
-      engagement: overall,
-      overall,
-    },
+    score: overall === null ? null : { overall },
+    scoreAvailability: narrativeEvidence?.scoreAvailability ?? (overall === null ? "unavailable" : "legacy_unknown"),
+    scoreReason: narrativeEvidence?.scoreReason ?? (overall === null ? "章节评估未完成，可重新审校。" : null),
     reports,
     openIssues,
     hasBlockingIssues: openIssues.some((issue) => issue.severity === "high" || issue.severity === "critical"),
@@ -365,11 +366,12 @@ export function ChapterRuntimeAuditCard(props: {
       </CardHeader>
       <CardContent className="space-y-3 text-sm">
         <div className="flex items-center gap-2">
-          <div className="font-medium">总分 {audit.score.overall}</div>
+          <div className="font-medium">{audit.score ? `${audit.scoreAvailability === "legacy_unknown" ? "历史评分" : "总分"} ${audit.score.overall}` : "未评分"}</div>
           <Badge variant={audit.hasBlockingIssues ? "default" : "outline"}>
             {audit.hasBlockingIssues ? "需处理" : "可继续"}
           </Badge>
         </div>
+        {!audit.score && audit.scoreReason ? <p className="text-xs text-muted-foreground">{audit.scoreReason}</p> : null}
         <div className="text-xs text-muted-foreground">
           审计报告 {audit.reports.length} 份，未解决问题 {audit.openIssues.length} 条。
         </div>

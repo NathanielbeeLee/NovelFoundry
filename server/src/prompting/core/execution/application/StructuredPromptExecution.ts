@@ -1,6 +1,7 @@
 import { executionSignal } from "../../../../platform/db";
 import { type BaseMessage, type BaseMessageChunk } from "@langchain/core/messages";
 import { getResolvedLLMClientOptionsFromInstance } from "../../../../llm/factory";
+import { isLlmRequestBudgetExhausted } from "../../../../llm/requestBudget";
 import { parseStructuredLlmRawContentDetailed, type StructuredInvokeResult, type PreparedStructuredInvocation } from "../../../../llm/structuredInvoke";
 import { buildStructuredResponseFormat, resolveStructuredOutputProfile, selectStructuredOutputStrategy } from "../../../../llm/structuredOutput";
 import { logMemoryUsage } from "../../../../runtime/memoryTelemetry";
@@ -61,6 +62,7 @@ export async function resolveStructuredOutput<I, O, R = O>(input: {
         postValidateFailureRecovered: false,
       };
     } catch (error) {
+      if (isLlmRequestBudgetExhausted(error)) throw error;
       if (semanticRetryAttempts >= maxSemanticRetryAttempts) {
         if (input.asset.postValidateFailureRecovery) {
           logPromptEvent({

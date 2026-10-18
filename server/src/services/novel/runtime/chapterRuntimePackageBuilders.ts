@@ -7,7 +7,8 @@ import type {
   RuntimeAuditReport,
 } from "@novelfoundry/shared/types/chapterRuntime";
 import type { TimelineCheckResult, TimelineContextForChapter, TimelineIssue } from "@novelfoundry/shared/types/timeline";
-import type { ChapterAcceptanceAssessmentOutput } from "../../../prompting/prompts/novel/chapterAcceptance.prompts";
+import type { ChapterAcceptanceAssessment } from "./acceptance";
+import { resolveQualityScoreState } from "@novelfoundry/shared/types/chapterRuntime/qualitySchemas";
 import { withChapterRepairContext } from "../../../prompting/prompts/novel/chapterLayeredContext";
 import { buildSyntheticPayoffIssues } from "../../payoff/payoffLedgerShared";
 import type { ChapterRuntimeRequestInput } from "./chapterRuntimeSchema";
@@ -64,11 +65,13 @@ export interface BuildRuntimePackageInput {
   lengthControl?: ChapterRuntimePackage["lengthControl"];
   auditResult: {
     score: ChapterRuntimePackage["audit"]["score"];
+    scoreAvailability?: ChapterRuntimePackage["audit"]["scoreAvailability"];
+    scoreReason?: string | null;
     auditReports: RuntimeAuditReport[];
   };
   activeOpenConflicts: OpenConflictRuntimeRow[];
   styleReview: StyleReviewResult;
-  acceptance: ChapterAcceptanceAssessmentOutput;
+  acceptance: ChapterAcceptanceAssessment;
   timelineCheck?: TimelineCheckResult;
   runId: string | null;
   plannerService: ChapterRuntimePlannerPort;
@@ -128,7 +131,7 @@ export function buildObligationCoverage(input: {
 }
 
 export function buildFailureClassification(input: {
-  acceptance: ChapterAcceptanceAssessmentOutput;
+  acceptance: ChapterAcceptanceAssessment;
   hasBlockingIssues: boolean;
   replanRecommended: boolean;
   missingObligations: ChapterExecutionMissingObligation[];
@@ -453,7 +456,12 @@ export function buildRuntimePackage(input: BuildRuntimePackageInput): ChapterRun
       generationState: input.styleReview.autoRewritten ? "repaired" : "drafted",
     },
     audit: {
-      score: input.auditResult.score,
+      ...resolveQualityScoreState({
+        ...input.auditResult, riskTags: input.acceptance.riskTags,
+        reports: input.auditResult.auditReports,
+        scoreAvailability: input.acceptance.scoreAvailability,
+        scoreReason: input.acceptance.scoreReason,
+      }),
       reports: input.auditResult.auditReports.map((report) => ({
         id: report.id,
         novelId: report.novelId,

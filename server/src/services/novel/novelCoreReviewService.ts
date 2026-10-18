@@ -1,5 +1,6 @@
 import type { AuditReport, QualityScore, ReviewIssue } from "@novelfoundry/shared/types/novel";
 import type { GenerationContextPackage } from "@novelfoundry/shared/types/chapterRuntime";
+import { resolveLatestNarrativeScoreEvidence } from "@novelfoundry/shared/types/chapterRuntime/qualitySchemas";
 import { WHOLE_BOOK_REVIEW_RUN_KIND } from "@novelfoundry/shared/types/wholeBookReview";
 import { polishPrisma as prisma } from "../../modules/novel/quality/polishPersistence";
 import { runStructuredPrompt } from "../../prompting/core/promptRunner";
@@ -33,9 +34,12 @@ import {
 export async function createQualityReport(
   novelId: string,
   chapterId: string,
-  score: QualityScore,
+  score: QualityScore | null,
   issues: ReviewIssue[],
 ) {
+  // Unscored attempts live in AuditReport and chapter quality debt. QualityReport
+  // stores completed numeric assessments and cannot represent unavailable grades.
+  if (!score) return;
   await prisma.qualityReport.create({
     data: {
       novelId,
@@ -189,19 +193,54 @@ export class NovelCoreReviewService {
       orderBy: { createdAt: "desc" },
     });
     const reports = storedReports.filter((report) => !report.issues?.includes(`"kind":"${WHOLE_BOOK_REVIEW_RUN_KIND}"`));
-    if (reports.length === 0) {
-      return { novelId, summary: normalizeScore({}), chapterReports: [] };
+    const acceptanceReports = await prisma.auditReport.findMany({
+      where: { novelId }, orderBy: { createdAt: "desc" },
+      select: { id: true, chapterId: true, createdAt: true, legacyScoreJson: true,
+        issues: { select: { code: true, auditType: true, severity: true, evidence: true, fixSuggestion: true } } },
+    });
+    const auditsByChapter = new Map<string, (typeof acceptanceReports)>();
+    for (const report of acceptanceReports) {
+      auditsByChapter.set(report.chapterId, [...(auditsByChapter.get(report.chapterId) ?? []), report]);
     }
-
-    const latestByChapter = new Map<string, (typeof reports)[number]>();
-    for (const report of reports) {
+    const latestEvidence = Array.from(auditsByChapter.entries()).flatMap(([chapterId, auditReports]) => {
+      const evidence = resolveLatestNarrativeScoreEvidence(auditReports);
+      return evidence ? [{ chapterId, ...evidence }] : [];
+    });
+    const evidencedChapterIds = new Set(latestEvidence.map((evidence) => evidence.chapterId));
+    const currentReports = reports.filter((report) => !report.chapterId || !evidencedChapterIds.has(report.chapterId))
+      .map((report) => ({ ...report, scoreAvailability: "legacy_unknown" as const, scoreReason: null as string | null }));
+    const evidencedReports = latestEvidence.flatMap((evidence) => {
+      if (!evidence.score) return [];
+      const metadata = JSON.parse(evidence.report.legacyScoreJson ?? "null");
+      const issues = Array.isArray(metadata?.manualReview?.issues) ? metadata.manualReview.issues
+        : evidence.report.issues.map((issue) => ({
+          severity: issue.severity, evidence: issue.evidence, fixSuggestion: issue.fixSuggestion,
+          category: issue.auditType === "character" ? "logic" : issue.auditType === "plot" ? "pacing" : "coherence",
+        }));
+      return [{ ...evidence.score, id: evidence.report.id, chapterId: evidence.chapterId, novelId,
+        scoreAvailability: evidence.scoreAvailability, scoreReason: evidence.scoreReason,
+        issues: issues.length > 0 ? JSON.stringify(issues) : null,
+        createdAt: evidence.report.createdAt, updatedAt: evidence.report.createdAt }];
+    });
+    const latestByChapter = new Map<string, (typeof currentReports)[number] | (typeof evidencedReports)[number]>();
+    for (const report of currentReports) {
       if (report.chapterId && !latestByChapter.has(report.chapterId)) {
         latestByChapter.set(report.chapterId, report);
       }
     }
+    for (const report of evidencedReports) latestByChapter.set(report.chapterId, report);
     const chapterReports = Array.from(latestByChapter.values());
-    const source = chapterReports.length > 0 ? chapterReports : reports;
+    const source = chapterReports.length > 0 ? chapterReports : currentReports;
     const total = source.length;
+    const unscoredChapters = latestEvidence
+      .filter((evidence) => evidence.score === null)
+      .map((evidence) => ({
+        chapterId: evidence.chapterId, scoreAvailability: "unavailable" as const,
+        scoreReason: evidence.scoreReason ?? "章节评估未完成，可重新审校。",
+      }));
+    if (total === 0) {
+      return { novelId, summary: null, chapterReports: [], totalReports: reports.length, unscoredChapters };
+    }
 
     const summary = normalizeScore({
       coherence: source.reduce((sum, item) => sum + item.coherence, 0) / total,
@@ -212,7 +251,7 @@ export class NovelCoreReviewService {
       overall: source.reduce((sum, item) => sum + item.overall, 0) / total,
     });
 
-    return { novelId, summary, chapterReports: source, totalReports: reports.length };
+    return { novelId, summary, chapterReports: source, totalReports: reports.length, unscoredChapters };
   }
 
   async getPayoffLedger(novelId: string, chapterOrder?: number) {

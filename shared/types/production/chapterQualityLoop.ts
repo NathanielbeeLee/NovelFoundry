@@ -1,5 +1,6 @@
 import type { ChapterFailureClassification, ChapterExecutionMissingObligation, ChapterRuntimePackage } from "../chapterRuntime.js";
 import type { QualityScore, ReviewIssue, ReplanRecommendation } from "../novel.js";
+import { resolveQualityScoreState, type QualityScoreAvailability } from "../chapterRuntime/qualitySchemas.js";
 
 export const CHAPTER_QUALITY_LOOP_ARTIFACT_TYPES = [
   "chapter_retention_contract",
@@ -46,6 +47,8 @@ export interface ChapterQualityLoopAssessment {
   rootCauseCode?: ChapterFailureClassification["code"] | null;
   blockingObligations?: ChapterExecutionMissingObligation[];
   signals: ChapterQualityLoopSignal[];
+  scoreAvailability?: QualityScoreAvailability;
+  scoreReason?: string | null;
 }
 
 export const CHAPTER_REPAIR_HISTORY_PREFIX = "[quality_history]";
@@ -240,7 +243,7 @@ export function hasChapterQualityLoopReplanRequiredRiskFlags(riskFlags: string |
 export interface ChapterQualityLoopAssessmentInput {
   chapterId: string;
   chapterOrder?: number | null;
-  score: QualityScore;
+  score: QualityScore | null;
   issues: ReviewIssue[];
   runtimePackage?: ChapterRuntimePackage | null;
   replanRecommendation?: ReplanRecommendation | null;
@@ -294,6 +297,7 @@ function worseStatus(
 }
 
 function buildRetentionSignal(input: ChapterQualityLoopAssessmentInput): ChapterQualityLoopSignal {
+  if (!input.score) return missingAssessmentSignal("chapter_retention_contract");
   const retentionIssues = input.issues.filter((issue) => (
     issue.category === "pacing"
     || issue.category === "coherence"
@@ -323,6 +327,7 @@ function buildRetentionSignal(input: ChapterQualityLoopAssessmentInput): Chapter
 }
 
 function buildContinuitySignal(input: ChapterQualityLoopAssessmentInput): ChapterQualityLoopSignal {
+  if (!input.score) return missingAssessmentSignal("continuity_state");
   const runtimeIssues = input.runtimePackage?.audit.openIssues ?? [];
   const continuityIssues = input.issues.filter((issue) => (
     issue.category === "coherence" || issue.category === "logic"
@@ -359,6 +364,9 @@ function buildContinuitySignal(input: ChapterQualityLoopAssessmentInput): Chapte
 }
 
 function buildProseQualitySignal(input: ChapterQualityLoopAssessmentInput): ChapterQualityLoopSignal {
+  if (input.runtimePackage?.meta?.riskTags?.includes("prose_check_unavailable")) {
+    return { artifactType: "prose_quality", status: "missing", reason: "正文自然度检查未完成，可后续重新检查。", issueCodes: ["prose_check_unavailable"] };
+  }
   const proseIssues = input.runtimePackage?.audit.openIssues.filter((issue) => (
     typeof issue.code === "string" && issue.code.startsWith("prose_")
   )) ?? [];
@@ -401,6 +409,7 @@ function buildRollingWindowSignal(input: ChapterQualityLoopAssessmentInput): Cha
       issueCodes: replanRecommendation.blockingIssueIds.slice(0, 8),
     };
   }
+  if (!input.score) return missingAssessmentSignal("rolling_window_review");
   const reportIssues = input.runtimePackage?.audit.reports.flatMap((report) => report.issues) ?? [];
   const blockingReportIssues = reportIssues.filter((issue) => (
     issue.severity === "high" || issue.severity === "critical"
@@ -418,6 +427,14 @@ function buildRollingWindowSignal(input: ChapterQualityLoopAssessmentInput): Cha
   };
 }
 
+function missingAssessmentSignal(artifactType: ChapterQualityLoopArtifactType): ChapterQualityLoopSignal {
+  return {
+    artifactType, status: "missing",
+    reason: "章节评估未完成，正文保留为质量债，可重新审校并继续后续章节。",
+    issueCodes: ["acceptance_gate_unavailable"],
+  };
+}
+
 function resolveAction(overallStatus: ChapterQualityLoopSignalStatus, signals: ChapterQualityLoopSignal[]): ChapterQualityLoopAction {
   const rollingWindow = signals.find((signal) => signal.artifactType === "rolling_window_review");
   if (rollingWindow?.status === "invalid") {
@@ -432,6 +449,14 @@ function resolveAction(overallStatus: ChapterQualityLoopSignalStatus, signals: C
 export function buildChapterQualityLoopAssessment(
   input: ChapterQualityLoopAssessmentInput,
 ): ChapterQualityLoopAssessment {
+  const scoreState = resolveQualityScoreState({
+    score: input.score,
+    scoreAvailability: input.runtimePackage?.audit.scoreAvailability,
+    scoreReason: input.runtimePackage?.audit.scoreReason,
+    riskTags: input.runtimePackage?.meta?.riskTags,
+    reports: input.runtimePackage?.audit.reports,
+  });
+  input = { ...input, score: scoreState.score };
   const signals = [
     buildRetentionSignal(input),
     buildContinuitySignal(input),
@@ -451,10 +476,12 @@ export function buildChapterQualityLoopAssessment(
     overallStatus,
     recommendedAction,
     patchFirstRequired: recommendedAction === "patch_repair",
-    recheckRequired: recommendedAction !== "continue",
+    recheckRequired: signals.some((signal) => signal.status === "missing") || recommendedAction !== "continue",
     pauseReason: null,
     rootCauseCode: input.runtimePackage?.failureClassification?.code ?? null,
     blockingObligations: input.runtimePackage?.failureClassification.blockingObligations ?? [],
     signals,
+    scoreAvailability: scoreState.scoreAvailability,
+    scoreReason: scoreState.scoreReason,
   };
 }

@@ -212,8 +212,12 @@ export function useNovelEditWorkspaceData({ state }: UseNovelEditWorkspaceDataIn
     [chapters],
   );
   const selectedChapter = useMemo(
-    () => chapters.find((item) => item.id === selectedChapterId),
-    [chapters, selectedChapterId],
+    () => {
+      const chapter = chapters.find((item) => item.id === selectedChapterId);
+      const unscored = qualityReportQuery.data?.data?.unscoredChapters?.some((item) => item.chapterId === selectedChapterId);
+      return chapter && unscored ? { ...chapter, qualityScore: null, pacingScore: null } : chapter;
+    },
+    [chapters, selectedChapterId, qualityReportQuery.data?.data?.unscoredChapters],
   );
   const characters = novelDetailQuery.data?.data?.characters ?? [];
   const baseCharacters = baseCharacterListQuery.data?.data ?? [];

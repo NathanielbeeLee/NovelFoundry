@@ -180,9 +180,12 @@ export async function getNovelQualityReport(id: string) {
   const { data } = await apiClient.get<
     ApiResponse<{
       novelId: string;
-      summary: QualityScore;
+      summary: QualityScore | null;
+      unscoredChapters?: Array<{ chapterId: string; scoreAvailability: "unavailable"; scoreReason: string }>;
       chapterReports: Array<{
         chapterId?: string | null;
+        scoreAvailability?: "available" | "unavailable" | "not_requested" | "legacy_unknown";
+        scoreReason?: string | null;
         coherence: number;
         repetition: number;
         pacing: number;

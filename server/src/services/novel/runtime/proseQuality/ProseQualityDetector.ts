@@ -431,6 +431,18 @@ function formatExcerpt(text: string): string {
   return normalized.length > 120 ? `${normalized.slice(0, 117)}...` : normalized;
 }
 
+/** A secondary heuristic check must not discard the narrative AI assessment. */
+export function tryDetectProseQuality(content: string): ProseQualityReport | null {
+  try {
+    return detectProseQuality(content);
+  } catch (error) {
+    console.warn("[chapter-runtime] secondary prose check unavailable", {
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return null;
+  }
+}
+
 function scoreFindings(findings: ProseQualityFinding[]): number {
   const penalty = findings.reduce((total, finding) => {
     switch (finding.severity) {

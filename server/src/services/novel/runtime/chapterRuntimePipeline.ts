@@ -12,6 +12,8 @@ import {
 import { runChapterRepairText } from "./repair/chapterRepairRuntime";
 import { ChapterPatchRepairFailedError } from "../chapterPatchRepairService";
 import { ChapterRepairInvocationFailedError } from "./repair/ChapterRepairFailurePolicy";
+import { createLlmRequestBudget, withLlmRequestBudget, type LlmRequestBudget } from "../../../llm/requestBudget";
+import { resolveQualityScoreState, type QualityScoreAvailability } from "@novelfoundry/shared/types/chapterRuntime/qualitySchemas";
 
 export interface PipelineRuntimeHooks {
   onCheckCancelled?: () => Promise<void>;
@@ -73,7 +75,9 @@ export interface QualityDebtAttribution {
 export interface PipelineRuntimeResult {
   reviewExecuted: boolean;
   pass: boolean;
-  score: QualityScore;
+  score: QualityScore | null;
+  scoreAvailability: QualityScoreAvailability;
+  scoreReason: string | null;
   issues: ReviewIssue[];
   runtimePackage: ChapterRuntimePackage | null;
   retryCountUsed: number;
@@ -140,6 +144,7 @@ interface RunPipelineChapterDeps {
     lengthControl?: ChapterRuntimePackage["lengthControl"];
     runId: string | null;
     startMs: number | null;
+    qualityRequestBudget?: LlmRequestBudget;
   }) => Promise<FinalizedRuntimeResult>;
   markChapterGenerationState: (
     chapterId: string,
@@ -181,6 +186,9 @@ export async function runPipelineChapterWithRuntime(
   const effectiveMaxRetries = Math.max(0, Math.min(maxRetries, 1));
   const repairAttemptsAllowed = autoRepair && repairMode !== "detect_only" ? effectiveMaxRetries : 0;
   const request = deps.validateRequest(requestInput);
+  // The object survives the local repair/recheck, while only acceptance and
+  // repair calls enter its scope. Writer, timeline and artifacts keep theirs.
+  const qualityRequestBudget = createLlmRequestBudget({ label: "chapter.quality", maxRequests: 8 });
   await deps.ensureNovelCharacters(novelId, "run chapter pipeline");
 
   const assembled = await deps.assemble(novelId, chapterId, request);
@@ -228,14 +236,9 @@ export async function runPipelineChapterWithRuntime(
       return {
         reviewExecuted: false,
         pass: true,
-        score: {
-          coherence: 100,
-          pacing: 100,
-          repetition: 100,
-          engagement: 100,
-          voice: 100,
-          overall: 100,
-        },
+        score: null,
+        scoreAvailability: "not_requested",
+        scoreReason: "本次未启用章节审校。",
         issues: [],
         runtimePackage: null,
         retryCountUsed,
@@ -253,7 +256,15 @@ export async function runPipelineChapterWithRuntime(
       lengthControl: latestLengthControl,
       runId: null,
       startMs: null,
+      qualityRequestBudget,
     });
+    latestResult.runtimePackage.audit = {
+      ...latestResult.runtimePackage.audit,
+      ...resolveQualityScoreState({
+        ...latestResult.runtimePackage.audit,
+        riskTags: latestResult.runtimePackage.meta?.riskTags,
+      }),
+    };
     const styleLeakageIssues = detectStyleReferenceLeakageIssues(content, latestResult.runtimePackage);
     latestIssues = [
       ...toReviewIssues(latestResult.runtimePackage),
@@ -291,7 +302,7 @@ export async function runPipelineChapterWithRuntime(
         .filter((kind) => kind.trim().length > 0);
     }
 
-    if (shouldPauseForAcceptance || !autoRepair || repairMode === "detect_only" || attempt >= effectiveMaxRetries) {
+    if (latestResult.runtimePackage.audit.score === null || shouldPauseForAcceptance || !autoRepair || repairMode === "detect_only" || attempt >= effectiveMaxRetries) {
       // 若是 attempt >= effectiveMaxRetries，这是第二次失败，记录二次 codes
       if (attempt > 0) {
         secondFailureIssueCodes = extractIssueCodes(latestResult.runtimePackage);
@@ -300,19 +311,20 @@ export async function runPipelineChapterWithRuntime(
     }
 
     await hooks.onStageChange?.("repairing");
-    const repairResult = await repairDraftContent({
+    const repairRuntimePackage = latestResult.runtimePackage;
+    const repairResult = await withLlmRequestBudget(qualityRequestBudget, () => repairDraftContent({
       novelTitle: assembled.novel.title,
       chapterTitle: assembled.chapter.title,
       content,
       issues: latestIssues,
-      runtimePackage: latestResult.runtimePackage,
+      runtimePackage: repairRuntimePackage,
       options: {
         provider: request.provider,
         model: request.model,
         temperature: request.temperature,
         repairMode,
       },
-    });
+    }));
     retryCountUsed += 1;
     await hooks.onRetryConsumed?.("quality_repair");
     if (repairResult.recoverableFailure) {
@@ -359,6 +371,8 @@ export async function runPipelineChapterWithRuntime(
     reviewExecuted: true,
     pass,
     score: latestResult.runtimePackage.audit.score,
+    scoreAvailability: latestResult.runtimePackage.audit.scoreAvailability,
+    scoreReason: latestResult.runtimePackage.audit.scoreReason,
     issues: latestIssues,
     runtimePackage: latestResult.runtimePackage,
     retryCountUsed,
@@ -449,8 +463,8 @@ async function syncFinalRetainedChapterArtifacts(
   });
 }
 
-function isQualityPass(score: QualityScore, qualityThreshold: number): boolean {
-  return score.coherence >= QUALITY_THRESHOLD.coherence
+function isQualityPass(score: QualityScore | null, qualityThreshold: number): boolean {
+  return score !== null && score.coherence >= QUALITY_THRESHOLD.coherence
     && score.repetition >= QUALITY_THRESHOLD.repetition
     && score.engagement >= QUALITY_THRESHOLD.engagement
     && score.overall >= qualityThreshold;

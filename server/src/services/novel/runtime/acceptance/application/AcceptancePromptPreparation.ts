@@ -7,7 +7,7 @@ import type { ChapterAcceptanceAssessmentInput } from "../../ChapterAcceptanceAs
 
 // Bump for schema preprocess/parser normalization, prose findings, assessment
 // normalization, or audit mapping changes that JSON Schema cannot describe.
-const ACCEPTANCE_RESULT_POLICY_VERSION = "v1";
+const ACCEPTANCE_RESULT_POLICY_VERSION = "v2";
 
 export interface PreparedChapterAcceptance {
   prompt: PreparedStructuredPromptExecution<ChapterAcceptancePromptInput, ChapterAcceptanceAssessmentOutput>;

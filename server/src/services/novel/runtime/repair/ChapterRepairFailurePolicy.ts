@@ -1,5 +1,6 @@
 import { isLlmInvocationCancelled, StreamOutcomeError } from "../../../../llm/streamOutcome";
 import { StructuredOutputError } from "../../../../llm/structuredOutput";
+import { isLlmRequestBudgetExhausted } from "../../../../llm/requestBudget";
 
 export function isChapterOperationCancelled(error: unknown): boolean {
   if (isLlmInvocationCancelled(error)) {
@@ -21,6 +22,7 @@ export function isChapterOperationCancelled(error: unknown): boolean {
 export function isRecoverableChapterAiFailure(error: unknown): error is Error {
   return !isChapterOperationCancelled(error) && (
     error instanceof StructuredOutputError
+    || isLlmRequestBudgetExhausted(error)
     || error instanceof StreamOutcomeError
     || (error instanceof Error && error.name === "TimeoutError")
   );

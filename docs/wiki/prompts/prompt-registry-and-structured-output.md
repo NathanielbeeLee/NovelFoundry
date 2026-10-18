@@ -153,11 +153,18 @@ Structured invocation errors retain their causes. Explicit cancellation stops
 strategy retries, JSON repair, and fallback-model invocation; review and repair
 must not convert cancellation into a successful fallback assessment.
 
-The structured-output `usage_budget_exceeded` category describes the bounded
-JSON repair allowance of one call. It does not mean that the book's token
-budget is exhausted. The director's token-budget service enforces the latter
-at chapter boundaries. Keep these decisions separate from quality debt and
-explicit replanning.
+The structured-output `usage_budget_exceeded` category describes an exhausted
+JSON repair allowance or the shared review request limit. It does not mean that
+the book's token budget is exhausted. The director's token-budget service
+enforces the latter at chapter boundaries. Keep these decisions separate from
+quality debt and explicit replanning.
+
+Chapter automatic review additionally shares a network request counter through
+structured strategies, repair, semantic retries and fallback. Exhaustion retains
+its cause and stops those retry mechanisms. The
+[chapter production contract](../workflows/chapter-production-chain.md#score-availability-and-request-limits)
+defines the review scope and its invocation-local lifetime. A request-count cap,
+JSON repair allowance and book token budget are separate limits.
 
 ## Prepared identities
 

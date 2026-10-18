@@ -7,6 +7,7 @@ import {
   type MessageContent,
 } from "@langchain/core/messages";
 import { StreamOutcomeError } from "./streamOutcome";
+import { consumeLlmRequestBudget } from "./requestBudget";
 
 interface AnthropicLLMOptions {
   apiKey?: string;
@@ -191,6 +192,7 @@ export function createAnthropicLLM(options: AnthropicLLMOptions): {
     const lifetime = new AnthropicRequestLifetime(options.timeoutMs, callOptions?.signal);
     try {
       lifetime.controller.signal.throwIfAborted();
+      consumeLlmRequestBudget();
       const response = await lifetime.race(fetch(`${normalizeBaseURL(options.baseURL)}/messages`, {
         method: "POST",
         signal: lifetime.controller.signal,

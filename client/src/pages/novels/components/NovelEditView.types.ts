@@ -458,7 +458,7 @@ export interface PipelineTabViewProps {
   repairStreamContent: string;
   isRepairStreaming: boolean;
   onAbortRepair: () => void;
-  qualitySummary?: QualityScore;
+  qualitySummary?: QualityScore | null;
   chapterReports: Array<{
     chapterId?: string | null;
     coherence: number;
