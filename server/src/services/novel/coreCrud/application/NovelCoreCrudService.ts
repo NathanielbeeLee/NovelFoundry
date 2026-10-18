@@ -1,12 +1,16 @@
 import { serializeCommercialTagsJson } from "@novelfoundry/shared/types/novelFraming";
+import type { Chapter } from "@prisma/client";
 import { prisma } from "../../../../db/prisma";
 import { AppError } from "../../../../middleware/errorHandler";
 import { STORY_WORLD_SLICE_SCHEMA_VERSION } from "../../storyWorldSlice/storyWorldSlicePersistence";
 import { syncChapterArtifacts } from "../../novelChapterArtifacts";
+import { buildContentHash, runWithChapterSource } from "../../artifacts/persistence";
 import { ChapterInput, CreateNovelInput, normalizeNovelOutput, normalizeOptionalTextForCreate, normalizeOptionalTextForUpdate, parseContinuationBookAnalysisSections, serializeContinuationBookAnalysisSections, UpdateNovelInput } from "../../novelCoreShared";
 import { queueRagDelete, queueRagUpsert } from "../../novelCoreSupport";
 import { persistChapterUpdate } from "../infrastructure/ChapterUpdatePersistence";
 import { NovelListQueryService } from "../infrastructure/NovelListQueryService";
+import { deleteEmptyManualChapter } from "../infrastructure/ChapterDeletePersistence";
+import { ragServices } from "../../../rag";
 
 export class NovelCoreCrudService extends NovelListQueryService {
   private validateStoryModeSelection(primaryStoryModeId?: string | null, secondaryStoryModeId?: string | null): void {
@@ -269,10 +273,15 @@ export class NovelCoreCrudService extends NovelListQueryService {
       },
     });
 
-    if (chapter.content) {
-      await syncChapterArtifacts(novelId, chapter.id, chapter.content);
-    }
-    await this.volumeService.mirrorChapterIntoWorkspace(novelId, {
+    await this.syncSavedChapter(novelId, chapter, true);
+    return chapter;
+  }
+
+  private async syncSavedChapter(novelId: string, chapter: Chapter, writesContent: boolean): Promise<void> {
+    await runWithChapterSource({
+      novelId, chapterId: chapter.id, contentHash: buildContentHash(chapter.content ?? ""),
+      expectedUpdatedAt: chapter.updatedAt,
+    }, () => this.volumeService.mirrorChapterIntoWorkspace(novelId, {
       id: chapter.id,
       order: chapter.order,
       title: chapter.title,
@@ -283,67 +292,34 @@ export class NovelCoreCrudService extends NovelListQueryService {
       mustAvoid: chapter.mustAvoid,
       taskSheet: chapter.taskSheet,
       sceneCards: chapter.sceneCards,
-    }).catch(() => null);
-    queueRagUpsert("chapter", chapter.id);
-    return chapter;
+    })).catch(() => null);
+    try {
+      // The committed row, never the caller's requested text, identifies follow-up work.
+      if (writesContent) await syncChapterArtifacts(novelId, chapter.id, chapter.content ?? "");
+      else await runWithChapterSource({ novelId, chapterId: chapter.id, contentHash: buildContentHash(chapter.content ?? ""),
+        expectedUpdatedAt: chapter.updatedAt }, async () => {
+          const { queueChapterProjectionIndexes } = await import("../../artifacts/manualSave");
+          await queueChapterProjectionIndexes();
+        });
+    } catch (error) {
+      console.warn("[manual-chapter-save] saved prose; projection follow-up failed", {
+        novelId, chapterId: chapter.id, error: error instanceof Error ? error.message : String(error),
+      });
+    }
   }
 
   async updateChapter(novelId: string, chapterId: string, input: import("../../novelCoreShared").ChapterUpdateInput) {
     const chapter = await persistChapterUpdate(prisma, novelId, chapterId, input);
 
-    if (typeof input.content === "string") {
-      await syncChapterArtifacts(novelId, chapterId, input.content);
-    }
-    await this.volumeService.mirrorChapterIntoWorkspace(novelId, {
-      id: chapter.id,
-      order: chapter.order,
-      title: chapter.title,
-      expectation: chapter.expectation,
-      targetWordCount: chapter.targetWordCount,
-      conflictLevel: chapter.conflictLevel,
-      revealLevel: chapter.revealLevel,
-      mustAvoid: chapter.mustAvoid,
-      taskSheet: chapter.taskSheet,
-      sceneCards: chapter.sceneCards,
-    }).catch(() => null);
-    queueRagUpsert("chapter", chapterId);
+    await this.syncSavedChapter(novelId, chapter, typeof input.content === "string");
     return chapter;
   }
 
   async deleteChapter(novelId: string, chapterId: string) {
-    const chapter = await prisma.chapter.findFirst({
-      where: { id: chapterId, novelId },
-      select: {
-        id: true,
-        content: true,
-        generationState: true,
-        chapterStatus: true,
-        expectation: true,
-        taskSheet: true,
-        sceneCards: true,
-        repairHistory: true,
-        riskFlags: true,
-      },
+    await deleteEmptyManualChapter(prisma, novelId, chapterId, async (tx) => {
+      for (const ownerType of ["chapter", "chapter_summary"] as const) {
+        await ragServices.ragIndexService.enqueueOwnerJob("delete", ownerType, chapterId, { db: tx });
+      }
     });
-    if (!chapter) {
-      throw new Error("章节不存在");
-    }
-    const canRemove = chapter.generationState === "planned"
-      && (chapter.chapterStatus ?? "unplanned") === "unplanned"
-      && !chapter.content?.trim()
-      && !chapter.expectation?.trim()
-      && !chapter.taskSheet?.trim()
-      && !chapter.sceneCards?.trim()
-      && !chapter.repairHistory?.trim()
-      && !chapter.riskFlags?.trim();
-    if (!canRemove) {
-      throw new Error("只能移除尚未进入写作或规划流程的空白手动章节");
-    }
-    queueRagDelete("chapter", chapterId);
-    queueRagDelete("chapter_summary", chapterId);
-    const deleted = await prisma.chapter.deleteMany({ where: { id: chapterId, novelId } });
-    if (deleted.count === 0) {
-      throw new Error("章节不存在");
-    }
   }
 }

@@ -101,6 +101,21 @@ explicitly; metadata-only clients keep their existing contract. A conflict keeps
 the local draft and offers comparison or reload. Continuing with the compared
 remote baseline still uses another conditional save, never a force overwrite.
 
+For a semantic prose change, the save transaction invalidates automatic summary,
+fact, timeline and local index projections while preserving authored records.
+Follow-up extraction uses the existing registered AI artifact owner and its
+source-locked transaction. Index work joins that transaction as an outbox;
+late embeddings must still validate their current owner before commit and read.
+Newer index revisions queue a successor behind an older running revision.
+
+The committed prose result is independent of subsequent mirror, extraction or
+index scheduling failures. Existing artifact checkpoints and diagnostic warnings
+record failed work; saving the same prose can retry it. Do not claim a separate
+restart recovery scheduler. Empty prose invalidates automatic projections and
+skips AI extraction. Prose compare-and-set and edit-preview identities are exact;
+AI artifact checkpoints retain their canonical-whitespace identity. Metadata
+mirror and index revisions additionally include their source revision.
+
 The editor instance belongs to the novel/chapter identity, not its query timestamp.
 A save acknowledges only submitted text. Later typing stays dirty through query
 refresh, failure and conflict. Switching chapters isolates late callbacks. This

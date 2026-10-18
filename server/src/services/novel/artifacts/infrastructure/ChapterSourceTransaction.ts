@@ -3,11 +3,13 @@ import type { Prisma } from "@prisma/client";
 import { polishPrisma as prisma } from "../../../../modules/novel/quality/polishPersistence";
 import { withSqliteRetry } from "../../../../db/sqliteRetry";
 import { buildContentHash } from "../domain/ChapterSourceIdentity";
+import { lockProjectionSourceRow } from "../../../../modules/novel/quality/sourceRowLock";
 
 export interface ChapterSourceIdentity {
   novelId: string;
   chapterId: string;
   contentHash: string;
+  expectedUpdatedAt?: Date;
   signal?: AbortSignal;
   dependencies?: Array<{ chapterId: string; contentHash: string }>;
 }
@@ -68,20 +70,19 @@ export async function runWithChapterSource<T>(source: ChapterSourceIdentity, per
     const sources = new Map((source.dependencies ?? []).map((item) => [item.chapterId, item.contentHash]));
     sources.set(source.chapterId, source.contentHash);
     for (const [chapterId, expectedHash] of [...sources].sort(([a], [b]) => a.localeCompare(b))) {
+      // Acquire the write lock without comparing SQL timestamp representations.
+      // Legacy SQLite integer dates and Prisma ISO dates decode to the same JS Date.
+      const locked = await lockProjectionSourceRow(tx, "chapter", chapterId, source.novelId);
+      if (locked !== 1) throw new StaleChapterSourceError(chapterId);
       const chapter = await tx.chapter.findFirst({
         where: { id: chapterId, novelId: source.novelId },
         select: { content: true, updatedAt: true },
       });
-      if (!chapter || buildContentHash(chapter.content ?? "") !== expectedHash) {
+      if (!chapter || buildContentHash(chapter.content ?? "") !== expectedHash
+        || (chapterId === source.chapterId && source.expectedUpdatedAt
+          && chapter.updatedAt.getTime() !== source.expectedUpdatedAt.getTime())) {
         throw new StaleChapterSourceError(chapterId);
       }
-      // Conditional no-op write holds PG row / SQLite write locks through commit.
-      // updatedAt in both predicate and data avoids reverting a concurrent metadata edit.
-      const locked = await tx.chapter.updateMany({
-        where: { id: chapterId, novelId: source.novelId, content: chapter.content, updatedAt: chapter.updatedAt },
-        data: { updatedAt: chapter.updatedAt },
-      });
-      if (locked.count !== 1) throw new StaleChapterSourceError(chapterId);
     }
     source.signal?.throwIfAborted();
     const result = await context.run({ tx, source }, persist);

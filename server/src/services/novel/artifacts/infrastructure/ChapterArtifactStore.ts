@@ -20,7 +20,6 @@ import {
   normalizeResourceKey,
 } from "../../characterResource/characterResourceShared";
 import { novelFactService, type NovelFactWriteItem } from "../../fact/NovelFactService";
-import { extractFacts } from "../../novelP0Utils";
 import { attachProposalSourceQuality } from "../../state/stateProposalSourceQuality";
 import { currentChapterSource, artifactPrisma as prisma } from "../infrastructure/ChapterSourceTransaction";
 
@@ -45,13 +44,12 @@ export class ChapterArtifactStore {
     output: ChapterArtifactDeltaOutput;
   }): Promise<number> {
     const summary = compactText(input.output.summary) || "暂无可总结正文";
-    const extractedFacts = extractFacts(input.content || summary);
     const keyEvents = joinFactContents(
-      extractedFacts.filter((item) => item.category === "plot").map((item) => item.content),
+      input.output.concreteFacts.map((item) => item.text),
       3,
     );
     const characterStates = joinFactContents(
-      extractedFacts.filter((item) => item.category === "character").map((item) => item.content),
+      input.output.stateDeltas.characterStates.map((item) => item.summary ?? ""),
       3,
     );
     await prisma.$transaction(async (tx) => {

@@ -14,7 +14,7 @@ function fixture(t,{abortAtEvent=false}={}){
   replace(t,prisma.chapterArtifactSyncCheckpoint,"updateMany",async({data})=>{state.outside.push(data.status);return {count:1};});
   replace(t,prisma,"$transaction",async(callback)=>{
     const pending=[];
-    const tx={chapter:{findFirst:async()=>({content:state.content,updatedAt:new Date()}),updateMany:async()=>({count:1})},
+    const tx={$executeRaw:async()=>1,chapter:{findFirst:async()=>({content:state.content,updatedAt:new Date()}),updateMany:async()=>({count:1})},
       chapterArtifactSyncCheckpoint:{upsert:async({create})=>{pending.push(["checkpoint",create.status,JSON.parse(create.metadataJson).sourceContentHash]);return row(create);}},
       timelineCheckReport:{create:async({data})=>{pending.push(["report"]);return row(data);}},
       storyTimelineEvent:{create:async({data})=>{pending.push(["event",data.title]);if(abortAtEvent)state.controller.abort(new DOMException("cancelled","AbortError"));return row(data);}},

@@ -40,7 +40,7 @@ test("same-body summary regeneration rejects an obsolete prepared index and retr
   const row=chunk("summary-old","chapter_summary");
   row.metadataJson=JSON.stringify({sourceContentHash:summary.sourceContentHash,sourceSummaryHash:buildSummarySourceHash({...summary,summary:"旧版摘要"})});
   const events=[];
-  const tx={chapter:{findFirst:async()=>({content:"正文",updatedAt:new Date()}),updateMany:async()=>({count:1})},
+  const tx={$executeRaw:async()=>1,chapter:{findFirst:async()=>({content:"正文",updatedAt:new Date()}),updateMany:async()=>({count:1})},
     chapterSummary:{findUnique:async()=>summary,updateMany:async()=>{throw new Error("must reject obsolete summary");}}};
   replace(t,prisma,"$transaction",async(callback)=>callback(tx));
   const store=new RagIndexStore({upsertPoints:async()=>events.push("staged"),deletePoints:async(ids)=>events.push(ids)});
@@ -60,10 +60,8 @@ test("current summary replacement checks and locks the actual summary row before
   const row=chunk("summary-new","chapter_summary");
   row.metadataJson=JSON.stringify({sourceContentHash:summary.sourceContentHash,sourceSummaryHash:buildSummarySourceHash(summary)});
   const events=[];
-  const tx={chapter:{findFirst:async()=>({content:"正文",updatedAt:new Date()}),updateMany:async()=>({count:1})},
-    chapterSummary:{findUnique:async()=>summary,updateMany:async({where,data})=>{
-      assert.equal(where.summary,summary.summary);assert.equal(data.updatedAt,summary.updatedAt);events.push("summary-lock");return {count:1};
-    }},knowledgeChunk:{findMany:async()=>[],createMany:async()=>events.push("metadata")}};
+  const tx={$executeRaw:async(sql)=>{if(sql.join("").includes("ChapterSummary"))events.push("summary-lock");return 1;},chapter:{findFirst:async()=>({content:"正文",updatedAt:new Date()})},
+    chapterSummary:{findUnique:async()=>summary},knowledgeChunk:{findMany:async()=>[],createMany:async()=>events.push("metadata")}};
   replace(t,prisma,"$transaction",async(callback)=>callback(tx));
   const store=new RagIndexStore({upsertPoints:async()=>{},deletePoints:async()=>{}});
   await store.replaceOwnerChunks({ownerType:"chapter_summary",ownerId:"c1",tenantId:"default",candidates:[row],vectors:[[1]]});
@@ -82,7 +80,7 @@ test("deleting a captured index cannot erase a concurrently committed new chunk 
 
 test("stale chapter index cannot commit metadata even after vectors were prepared", async (t) => {
   const events=[]; const row=chunk("new");
-  const tx={chapter:{findFirst:async()=>({content:"正文被改写",updatedAt:new Date()}),updateMany:async()=>{throw new Error("must not lock stale source");}},knowledgeChunk:{createMany:async()=>events.push("metadata")}};
+  const tx={$executeRaw:async()=>1,chapter:{findFirst:async()=>({content:"正文被改写",updatedAt:new Date()}),updateMany:async()=>{throw new Error("must not lock stale source");}},knowledgeChunk:{createMany:async()=>events.push("metadata")}};
   replace(t,prisma,"$transaction",async(callback)=>callback(tx));
   const store=new RagIndexStore({upsertPoints:async()=>events.push("staged"),deletePoints:async(ids)=>events.push(["clean",...ids])});
   await assert.rejects(store.replaceOwnerChunks({ownerType:"chapter",ownerId:"c1",tenantId:"default",candidates:[row],vectors:[[1]]}),StaleChapterSourceError);
@@ -91,7 +89,7 @@ test("stale chapter index cannot commit metadata even after vectors were prepare
 
 test("current index metadata replacement holds source fence and cleans only superseded ids", async (t) => {
   const events=[];const row=chunk("new");
-  const tx={chapter:{findFirst:async()=>({content:"正文",updatedAt:new Date()}),updateMany:async()=>{events.push("locked");return {count:1};}},knowledgeChunk:{
+  const tx={$executeRaw:async()=>{events.push("locked");return 1;},chapter:{findFirst:async()=>({content:"正文",updatedAt:new Date()})},knowledgeChunk:{
     findMany:async()=>[{id:"old"}],createMany:async({data})=>{events.push(["insert",data[0].id]);},deleteMany:async({where})=>events.push(["retire",...where.id.in]),
   }};
   replace(t,prisma,"$transaction",async(callback)=>{events.push("transaction");const result=await callback(tx);events.push("commit");return result;});

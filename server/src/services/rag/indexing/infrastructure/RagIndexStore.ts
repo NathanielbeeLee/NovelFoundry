@@ -2,6 +2,8 @@ import { artifactPrisma as prisma, runWithChapterSource } from "../../../novel/a
 import { VectorStoreService } from "../../VectorStoreService";
 import type { RagChunkCandidate, RagOwnerType } from "../../types";
 import { buildSummarySourceHash } from "../domain/RagSummarySourceIdentity";
+import { lockRagProjectionSource } from "./RagProjectionSourceLock";
+import { lockProjectionSourceRow } from "../../../../modules/novel/quality/sourceRowLock";
 
 export class RagIndexStore {
   constructor(private readonly vectorStoreService: VectorStoreService) {}
@@ -38,7 +40,10 @@ export class RagIndexStore {
     await this.vectorStoreService.upsertPoints(newPoints);
     let oldIds: string[] = [];
     const commit = () => prisma.$transaction(async (tx) => {
+      await lockRagProjectionSource(tx, ownerType, ownerId, candidates);
       if (ownerType === "chapter_summary") {
+        const locked = await lockProjectionSourceRow(tx, "chapterSummary", ownerId, candidates[0]!.novelId!);
+        if (locked !== 1) throw new Error("Chapter summary changed before index commit.");
         const hashes = new Set(candidates.map((item) => JSON.parse(item.metadataJson ?? "{}").sourceSummaryHash));
         const summary = await tx.chapterSummary.findUnique({ where: { chapterId: ownerId } });
         if (!summary || summary.novelId !== candidates[0]?.novelId || hashes.size !== 1
@@ -46,13 +51,6 @@ export class RagIndexStore {
           || summary.sourceContentHash !== JSON.parse(candidates[0]?.metadataJson ?? "{}").sourceContentHash) {
           throw new Error("Chapter summary changed while its index was being prepared.");
         }
-        const locked = await tx.chapterSummary.updateMany({
-          where: { chapterId: ownerId, updatedAt: summary.updatedAt, summary: summary.summary,
-            keyEvents: summary.keyEvents, characterStates: summary.characterStates, hook: summary.hook,
-            sourceContentHash: summary.sourceContentHash },
-          data: { updatedAt: summary.updatedAt },
-        });
-        if (locked.count !== 1) throw new Error("Chapter summary changed before index commit.");
       }
       const oldChunks = await tx.knowledgeChunk.findMany({ where: { tenantId, ownerType, ownerId }, select: { id: true } });
       oldIds = oldChunks.map((item) => item.id);
@@ -92,7 +90,9 @@ export class RagIndexStore {
         if (hashes.size !== 1 || typeof contentHash !== "string" || !contentHash || !novelId) {
           throw new Error("Chapter indexing requires one verified source content hash.");
         }
-        await runWithChapterSource({ novelId, chapterId: ownerId, contentHash }, commit);
+        const metadata = JSON.parse(candidates[0]?.metadataJson ?? "{}");
+        const updatedAt = ownerType === "chapter" && typeof metadata.updatedAt === "string" ? new Date(metadata.updatedAt) : undefined;
+        await runWithChapterSource({ novelId, chapterId: ownerId, contentHash, expectedUpdatedAt: updatedAt }, commit);
       } else {
         await commit();
       }

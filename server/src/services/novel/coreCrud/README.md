@@ -37,10 +37,14 @@ book-specific world slice and its overrides using the current schema version.
 
 Novel deletion retains its transaction for failed-task archive cleanup and
 novel removal, followed by the existing retrieval-index cleanup requests.
-Chapter creation and update retain their original artifact synchronization,
-best-effort volume workspace mirror, and retrieval-index update ordering.
+Chapter creation and update use the source-aware manual artifact scheduling
+facade. The best-effort volume mirror joins its source-locked transaction; index
+and AI follow-ups do not turn an already committed prose save into an API error.
 Chapter removal remains limited to an empty manual chapter that has not entered
 planning or writing; it must not bypass the existing content and artifact guard.
+Removal locks the current chapter before checking that condition, then deletes
+and enqueues its index cleanup in the same transaction. A concurrent saved draft
+cannot be removed based on an older empty-state observation.
 
 These APIs do not introduce a workflow checkpoint, promote a local quality
 warning into global replan, or change generation runtime ownership.
@@ -60,3 +64,11 @@ Only a committed update proceeds to artifact synchronization, volume mirroring
 and RAG scheduling. Rejected updates must not synchronize the rejected prose.
 This endpoint does not add an unconditional force-save option or change the
 separate generation/polish persistence paths.
+
+Semantic body changes invalidate automatic chapter projections and their local
+index metadata inside the prose CAS transaction. Manual facts/timeline entries
+remain intact. Blank saved drafts invalidate stale automatic data and skip AI.
+See [the artifact boundary](../artifacts/README.md) for canonical whitespace
+identity, source fences, RAG outbox revisions and the existing checkpoint retry
+contract. The internal `beforeChapterUpdate` hook is stripped before writing and
+runs in that same transaction; it is not an HTTP body field.

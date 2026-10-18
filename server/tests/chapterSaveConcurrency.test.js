@@ -25,7 +25,11 @@ function store(content = "original") {
           async findFirst({ where }) {
             return where.id === row.id && where.novelId === row.novelId ? { ...row } : null;
           },
-        } });
+        },
+          consistencyFact: { findMany: async () => [], deleteMany: async () => ({ count: 0 }) },
+          characterTimeline: { findMany: async () => [], deleteMany: async () => ({ count: 0 }) },
+          chapterSummary: { updateMany: async () => ({ count: 0 }) },
+        });
       } catch (error) { row = before; throw error; }
     });
     pending = next.catch(() => {});

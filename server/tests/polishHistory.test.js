@@ -52,7 +52,13 @@ const delegate = (model) => ({
 });
 const fake = new Proxy({
   $transaction: async (run) => { const before = copy(tables); try { return await run(fake); } catch (error) { tables = before; throw error; } },
-  $executeRaw: async () => { throw new Error("raw reached database"); },
+  $executeRaw: async (strings, id, novelId) => {
+    const sql = strings.join("?");
+    const match = /^UPDATE "(Chapter|ChapterSummary|CharacterTimeline|ConsistencyFact)" SET "id" = "id" WHERE "(id|chapterId)" = \? AND "novelId" = \?$/.exec(sql);
+    assert.ok(match, "only owned parameterized no-op source locks may reach this fixture");
+    const model = match[1][0].toLowerCase() + match[1].slice(1);
+    return rows(model).filter(row => row[match[2]] === id && row.novelId === novelId).length;
+  },
 }, { get(target, key) { if (key in target) return target[key]; return target[key] = delegate(key); } });
 
 const prismaPath = require.resolve("../dist/db/prisma.js");
@@ -232,4 +238,21 @@ test("an opted-in write cannot silently escape to another book", async () => {
   });
   assert.equal(rows("chapter").find((chapter) => chapter.id === "foreign").content, "另一书");
   assert.equal(JSON.parse(revision.afterChapterStateJson).captureComplete, false);
+});
+
+
+test("owned no-op source locks work in a polish journal and escaped clients lose that authority", async () => {
+  reset();
+  const { lockProjectionSourceRow } = require("../dist/modules/novel/quality/sourceRowLock.js");
+  let captured;
+  await withPolishRevision({ enabled: true, novelId: "n1", chapterId: "c1", jobId: "lock-fixture" }, async () => {
+    await polishPrisma.$transaction(async tx => {
+      captured = tx;
+      assert.equal(await lockProjectionSourceRow(tx, "chapter", "c1", "n1"), 1);
+      await assert.rejects(lockProjectionSourceRow(tx, "chapter", "c1", "other"), /active novel revision/);
+    });
+  });
+  assert.equal(rows("chapter")[0].content, "润色前");
+  assert.equal(rows("chapterPolishMutation").length, 0, "locks must not create inverse mutations");
+  await assert.rejects(lockProjectionSourceRow(captured, "chapter", "c1", "n1"), /active novel revision/);
 });

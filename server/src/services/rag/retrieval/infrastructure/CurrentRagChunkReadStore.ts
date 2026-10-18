@@ -17,18 +17,28 @@ export async function filterCurrentRagChunks(chunks: RetrievedChunk[], tenantId:
     where: { id: { in: Array.from(new Set(chunks.map((chunk) => chunk.id))) }, tenantId },
   });
   const recordsById = new Map(records.map((record) => [record.id, record]));
+  const timelineIds = records.filter((row) => row.ownerType === "character_timeline").map((row) => row.ownerId);
+  const factIds = records.filter((row) => row.ownerType === "consistency_fact").map((row) => row.ownerId);
+  const [timelines, facts] = await Promise.all([
+    timelineIds.length ? prisma.characterTimeline.findMany({ where: { id: { in: timelineIds } }, select: { id: true, novelId: true, updatedAt: true } }) : [],
+    factIds.length ? prisma.consistencyFact.findMany({ where: { id: { in: factIds } }, select: { id: true, novelId: true, updatedAt: true } }) : [],
+  ]);
+  const projectionRows = new Map<string, { id: string; novelId: string; updatedAt: Date }>([
+    ...timelines.map((row) => [`character_timeline:${row.id}`, row] as const),
+    ...facts.map((row) => [`consistency_fact:${row.id}`, row] as const),
+  ]);
   const chapterIds = Array.from(new Set(records
     .filter((record) => record.ownerType === "chapter" || record.ownerType === "chapter_summary")
     .map((record) => record.ownerId)));
   const [chapters, summaries] = chapterIds.length ? await Promise.all([
-    prisma.chapter.findMany({ where: { id: { in: chapterIds } }, select: { id: true, novelId: true, content: true } }),
+    prisma.chapter.findMany({ where: { id: { in: chapterIds } }, select: { id: true, novelId: true, content: true, updatedAt: true } }),
     prisma.chapterSummary.findMany({ where: { chapterId: { in: chapterIds } }, select: {
       chapterId: true, novelId: true, sourceContentHash: true,
       summary: true, keyEvents: true, characterStates: true, hook: true,
     } }),
   ]) : [[], []];
   const chapterSources = new Map(chapters.filter((chapter) => chapter.content?.trim()).map((chapter) => [chapter.id, {
-    novelId: chapter.novelId, hash: buildContentHash(chapter.content ?? ""),
+    novelId: chapter.novelId, hash: buildContentHash(chapter.content ?? ""), updatedAt: chapter.updatedAt,
   }]));
   const summarySources = new Map(summaries.map((summary) => [summary.chapterId, summary]));
   return chunks.flatMap((chunk) => {
@@ -36,9 +46,15 @@ export async function filterCurrentRagChunks(chunks: RetrievedChunk[], tenantId:
     if (!record || record.ownerType !== chunk.ownerType || record.ownerId !== chunk.ownerId
       || (record.novelId ?? undefined) !== chunk.novelId || (record.worldId ?? undefined) !== chunk.worldId) return [];
     const metadata = readMetadata(record.metadataJson);
+    if (record.ownerType === "character_timeline" || record.ownerType === "consistency_fact") {
+      const row = projectionRows.get(`${record.ownerType}:${record.ownerId}`);
+      if (!row || row.novelId !== record.novelId || metadata.updatedAt !== row.updatedAt.toISOString()) return [];
+    }
     if (record.ownerType === "chapter" || record.ownerType === "chapter_summary") {
       const source = chapterSources.get(record.ownerId);
       if (!source || source.novelId !== record.novelId || metadata.sourceContentHash !== source.hash) return [];
+      if (record.ownerType === "chapter" && typeof metadata.updatedAt === "string" && source.updatedAt
+        && metadata.updatedAt !== source.updatedAt.toISOString()) return [];
       if (record.ownerType === "chapter_summary") {
         const summary = summarySources.get(record.ownerId);
         if (!summary || summary.novelId !== source.novelId || summary.sourceContentHash !== source.hash

@@ -87,7 +87,9 @@ export interface UpdateNovelInput {
   structuredOutline?: string | null;
 }
 
-export type ChapterUpdateInput = Partial<ChapterInput> & Partial<import("@novelfoundry/shared/types/novel").ChapterContentWritePrecondition>;
+export type ChapterUpdateInput = Partial<ChapterInput>
+  & Partial<import("@novelfoundry/shared/types/novel").ChapterContentWritePrecondition>
+  & { beforeChapterUpdate?: (tx: import("@prisma/client").Prisma.TransactionClient) => Promise<void> };
 
 export interface ChapterInput {
   title: string;

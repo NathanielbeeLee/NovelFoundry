@@ -2,7 +2,7 @@ import type { VolumeChapterPlan, VolumePlan, VolumePlanDocument } from "@novelfo
 
 import type { Prisma } from "@prisma/client";
 
-import { prisma } from "../../../../../db/prisma";
+import { artifactPrisma as prisma } from "../../../artifacts/persistence";
 
 import { novelEventBus } from "../../../../../events";
 

@@ -12,6 +12,7 @@ function fixture(t, content = "最新正文") {
   let transactionCount = 0;
   let casCount = 1;
   const tx = {
+    $executeRaw: async (sql, chapterId, novelId) => { guards.push({ sql: sql.join("?"), chapterId, novelId }); return casCount; },
     chapter: {
       findFirst: async () => ({ content, updatedAt: new Date("2026-09-11T00:00:00Z") }),
       updateMany: async (args) => { guards.push(args); return { count: casCount }; },
@@ -36,14 +37,15 @@ test("stale extraction is rejected within actual transaction before any derived 
   let wrote = false;
   await assert.rejects(runWithChapterSource({ ...f.source, contentHash: buildContentHash("旧正文") }, async () => { wrote = true; }), StaleChapterSourceError);
   assert.equal(wrote, false);
-  assert.equal(f.guards.length, 0);
+  assert.equal(f.guards.length, 1);
 });
 
-test("a source change between read and conditional lock rejects commit", async (t) => {
+test("a missing source row at the lock rejects commit", async (t) => {
   const f = fixture(t); f.loseClaim();
   await assert.rejects(runWithChapterSource(f.source, async () => { throw new Error("must not write"); }), StaleChapterSourceError);
-  assert.equal(f.guards[0].where.content, "最新正文");
-  assert.deepEqual(f.guards[0].where.updatedAt, f.guards[0].data.updatedAt);
+  assert.equal(f.guards[0].chapterId, "c1");
+  assert.equal(f.guards[0].novelId, "n1");
+  assert.match(f.guards[0].sql, /SET "id" = "id"/);
 });
 
 test("canonical dependency writes and nested transactions join the locked source transaction", async (t) => {

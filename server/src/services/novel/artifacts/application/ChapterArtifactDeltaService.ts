@@ -1,7 +1,5 @@
 import { runStructuredPrompt } from "../../../../prompting/core/promptRunner";
 import { chapterArtifactDeltaPrompt } from "../../../../prompting/prompts/novel/chapterArtifactDelta.prompts";
-import { ragServices } from "../../../rag";
-import type { RagOwnerType } from "../../../rag/types";
 import { stateService } from "../../../state/StateService";
 import { characterMindService } from "../../characterMind/CharacterMindService";
 import { characterResourceLedgerService } from "../../characterResource/CharacterResourceLedgerService";
@@ -26,6 +24,7 @@ import {
 import { buildContentHash } from "../domain/ChapterSourceIdentity";
 import { ChapterArtifactStore } from "../infrastructure/ChapterArtifactStore";
 import { ChapterCharacterArtifactStore } from "../infrastructure/ChapterCharacterArtifactStore";
+import { queueChapterProjectionIndexes } from "../infrastructure/ChapterProjectionIndexQueue";
 
 export class ChapterArtifactDeltaService {
   private readonly store = new ChapterArtifactStore();
@@ -44,7 +43,7 @@ export class ChapterArtifactDeltaService {
       }),
       prisma.chapter.findFirst({
         where: { id: input.chapterId, novelId: input.novelId },
-        select: { id: true, order: true, title: true, expectation: true, taskSheet: true },
+        select: { id: true, order: true, title: true, expectation: true, taskSheet: true, updatedAt: true },
       }),
       prisma.chapter.findMany({
         where: { novelId: input.novelId },
@@ -127,6 +126,7 @@ export class ChapterArtifactDeltaService {
       novelId: input.novelId,
       chapterId: input.chapterId,
       contentHash,
+      expectedUpdatedAt: chapter.updatedAt,
       signal: input.signal,
       dependencies: chapters.filter((item) => item.order < chapter.order).map((item) => ({
         chapterId: item.id,
@@ -143,6 +143,10 @@ export class ChapterArtifactDeltaService {
         chapterOrder: chapter.order,
         content,
         output,
+      });
+      await this.characters.persistChapterTimeline({
+        novelId: input.novelId, chapterId: input.chapterId, chapterOrder: chapter.order,
+        chapterTitle: chapter.title, characters, output,
       });
       const stateSnapshotId = output.syncPlan.stateSnapshot === "skip"
         ? null
@@ -226,6 +230,7 @@ export class ChapterArtifactDeltaService {
           }),
       ]);
 
+      await queueChapterProjectionIndexes();
       return {
         contentHash,
         output,
@@ -243,7 +248,6 @@ export class ChapterArtifactDeltaService {
         requiresFullReconcile: output.requiresFullReconcile || output.syncPlan.payoffLedger === "full_reconcile",
       };
     });
-    await Promise.all(["chapter", "chapter_summary"].map((ownerType) => ragServices.ragIndexService.enqueueUpsert(ownerType as RagOwnerType, input.chapterId).catch(() => null)));
     return committed;
   }
 

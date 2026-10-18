@@ -1,6 +1,6 @@
 import type { VolumeChapterPlan, VolumePlan, VolumePlanDocument } from "@novelfoundry/shared/types/novel";
 import type { Prisma } from "@prisma/client";
-import { prisma } from "../../../db/prisma";
+import { artifactPrisma as prisma, currentChapterSource } from "../artifacts/persistence";
 import { withSqliteRetry } from "../../../db/sqliteRetry";
 import { AppError } from "../../../middleware/errorHandler";
 import {
@@ -19,6 +19,7 @@ export const VOLUME_WORKSPACE_TRANSACTION_TIMEOUT_MS = 60_000;
 export function runVolumeWorkspaceTransaction<T>(
   runner: (tx: Prisma.TransactionClient) => Promise<T> | T,
 ): Promise<T> {
+  if (currentChapterSource()) return prisma.$transaction(async (tx) => runner(tx));
   return withSqliteRetry(
     () => prisma.$transaction(async (tx) => runner(tx), {
       timeout: VOLUME_WORKSPACE_TRANSACTION_TIMEOUT_MS,

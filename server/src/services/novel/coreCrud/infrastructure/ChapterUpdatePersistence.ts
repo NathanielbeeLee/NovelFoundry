@@ -2,6 +2,7 @@ import type { PrismaClient } from "@prisma/client";
 import type { ChapterSaveConflict } from "@novelfoundry/shared/types/novel";
 import { AppError } from "../../../../middleware/errorHandler";
 import type { ChapterUpdateInput } from "../../novelCoreShared";
+import { buildContentHash, invalidateManualChapterProjections } from "../../artifacts/manualPersistence";
 
 export class ChapterSaveConflictError extends AppError {
   constructor(readonly conflict: ChapterSaveConflict) {
@@ -16,12 +17,13 @@ export async function persistChapterUpdate(
   chapterId: string,
   input: ChapterUpdateInput,
 ) {
-  const { expectedContent, ...data } = input;
+  const { expectedContent, beforeChapterUpdate, ...data } = input;
   const writesContent = typeof input.content === "string";
   if (writesContent && expectedContent === undefined) {
     throw new AppError("保存正文需要原文版本。请保留草稿并刷新应用后重试。", 428);
   }
   return db.$transaction(async (tx) => {
+    await beforeChapterUpdate?.(tx);
     // The conditional UPDATE acquires the write lock; no read/check/write gap.
     const result = await tx.chapter.updateMany({
       where: { id: chapterId, novelId, ...(writesContent ? { content: expectedContent } : {}) },
@@ -37,6 +39,9 @@ export async function persistChapterUpdate(
         updatedAt: chapter.updatedAt.toISOString(),
       });
     }
+    if (writesContent && (buildContentHash(input.content ?? "") !== buildContentHash(expectedContent ?? "") || !input.content?.trim())) {
+      await invalidateManualChapterProjections(tx, novelId, chapterId);
+    }
     return chapter;
-  });
+  }, beforeChapterUpdate ? { isolationLevel: "Serializable" } : undefined);
 }

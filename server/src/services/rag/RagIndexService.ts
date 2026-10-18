@@ -1,5 +1,5 @@
 import { RagOwnerIndexingService } from "./indexing";
-import type { RagIndexJob } from "@prisma/client";
+import type { Prisma, RagIndexJob } from "@prisma/client";
 import { prisma } from "../../db/prisma";
 import { ragConfig } from "../../config/rag";
 import { getRagEmbeddingSettings } from "../settings/RagSettingsService";
@@ -164,10 +164,13 @@ export class RagIndexService {
       payload?: Record<string, unknown>;
       runAfter?: Date;
       maxAttempts?: number;
+      /** Join a caller-owned, source-locked transaction for projection events. */
+      db?: Pick<Prisma.TransactionClient, "ragIndexJob">;
     },
   ) {
     const tenantId = options?.tenantId ?? ragConfig.defaultTenantId;
-    const existing = await prisma.ragIndexJob.findFirst({
+    const db = options?.db ?? prisma;
+    const existing = await db.ragIndexJob.findFirst({
       where: {
         tenantId,
         jobType,
@@ -177,10 +180,14 @@ export class RagIndexService {
       },
       orderBy: { createdAt: "desc" },
     });
-    if (existing) {
+    // A newer source needs a queued successor when the previous revision is in flight.
+    const sourceRevision = options?.payload?.sourceRevision;
+    const supersedesRunning = existing?.status === "running" && sourceRevision
+      && sourceRevision !== this.parseJobPayload(existing.payloadJson).sourceRevision;
+    if (existing && !supersedesRunning) {
       if (options?.payload && existing.status === "queued") {
         const currentPayload = this.parseJobPayload(existing.payloadJson);
-        await prisma.ragIndexJob.update({
+        await db.ragIndexJob.update({
           where: { id: existing.id },
           data: {
             payloadJson: JSON.stringify({
@@ -193,7 +200,7 @@ export class RagIndexService {
       }
       return existing;
     }
-    const created = await prisma.ragIndexJob.create({
+    const created = await db.ragIndexJob.create({
       data: {
         tenantId,
         jobType,

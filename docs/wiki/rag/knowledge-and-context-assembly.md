@@ -58,6 +58,14 @@ recoverable and removes a document from default recall; restoring it queues a
 new index build. Facets and chapter anchors must use one shared field contract
 across local chunks and vector payloads.
 
+Manual chapter saves invalidate obsolete automatic projection metadata in the
+same transaction as prose. An in-flight index build cannot restore deleted or
+replaced facts/timelines: commit locks and checks the current owner revision,
+and retrieval checks owner existence and revision again. Chapter metadata and
+summary revisions are distinct from the normalized prose identity. An updated
+projection needs a queued successor when an earlier index job is running; a
+shared prose hash alone cannot deduplicate those events safely.
+
 ## Failure diagnosis
 
 Check active version, index completion, vector-store connectivity, scope,

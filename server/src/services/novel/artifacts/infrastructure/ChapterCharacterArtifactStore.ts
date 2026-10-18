@@ -13,9 +13,36 @@ import {
   mergeKnowledgeBoundaryState,
   normalizeName,
   uniqueTextItems,
+  resolveCharacter,
 } from "../domain/ChapterArtifactMapping";
 
 export class ChapterCharacterArtifactStore {
+
+  async persistChapterTimeline(input: {
+    novelId: string; chapterId: string; chapterOrder: number; chapterTitle: string;
+    characters: CharacterLookupItem[]; output: ChapterArtifactDeltaOutput;
+  }): Promise<void> {
+    const events = input.output.stateDeltas.characterStates.flatMap((state) => {
+      const character = input.characters.find((item) => item.id === state.characterId)
+        ?? resolveCharacter(input.characters, state.characterName);
+      const summary = state.summary?.trim();
+      return character && summary ? [{
+        novelId: input.novelId, chapterId: input.chapterId, chapterOrder: input.chapterOrder,
+        characterId: character.id, title: `${input.chapterOrder} · ${input.chapterTitle}`,
+        content: summary, source: "chapter_extract",
+      }] : [];
+    });
+    const old = await prisma.characterTimeline.findMany({ where: {
+      novelId: input.novelId, chapterId: input.chapterId, source: "chapter_extract",
+    }, select: { id: true } });
+    if (old.length) await prisma.knowledgeChunk.deleteMany({ where: {
+      novelId: input.novelId, ownerType: "character_timeline", ownerId: { in: old.map(({ id }) => id) },
+    } });
+    await prisma.characterTimeline.deleteMany({ where: {
+      novelId: input.novelId, chapterId: input.chapterId, source: "chapter_extract",
+    } });
+    if (events.length) await prisma.characterTimeline.createMany({ data: events });
+  }
 
   async expirePastCharacterDialogueInfluences(input: {
     novelId: string;

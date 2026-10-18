@@ -334,6 +334,9 @@ are retained in [NOTICE](NOTICE).
 
 ### 2026-10-18
 
+- Saving a chapter preserves committed prose when follow-up processing fails.
+  Earlier synchronization and indexing results cannot overwrite newer chapter
+  facts, timelines or metadata; blank chapters skip AI extraction.
 - Trial batches and resumed chapter runs keep the full novel size in planning
   context while writing only the selected chapter range.
 - Chapter patch previews and saves require a unique passage in the current

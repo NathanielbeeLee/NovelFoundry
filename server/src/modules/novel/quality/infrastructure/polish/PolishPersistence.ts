@@ -1,6 +1,8 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import { prisma } from "../../../../../db/prisma";
 import { polishEntities, novelScope, diffImages, rawContentHash, modelFor, type JournalImage, type PolishEntity, type StoredRow } from "../../domain/polish/PolishJournal";
+import { registerPolishSourceLockClient } from "./PolishSourceRowLock";
+import type { Prisma } from "@prisma/client";
 
 type Db = Record<string, any>;
 export interface PolishScope {
@@ -49,7 +51,8 @@ async function assertOwnedWrite(client: Db, entity: string, input: Db): Promise<
 }
 
 function guardClient(client: Db): Db {
-  return new Proxy(client, { get(target, property) {
+  const registeredScope = scope.getStore();
+  const guarded = new Proxy(client, { get(target, property) {
     if (property === "$transaction") return async (operation: unknown) => {
       if (typeof operation !== "function") throw new Error("Polish journal requires callback transactions.");
       return operation(guardClient(target));
@@ -88,6 +91,13 @@ function guardClient(client: Db): Db {
       };
     } });
   } });
+  registerPolishSourceLockClient(guarded, client as Prisma.TransactionClient, (novelId) => {
+    const active = scope.getStore();
+    if (!active || active !== registeredScope || active.closed || active.failure || active.novelId !== novelId) {
+      throw new Error("Polish source lock does not belong to the active novel revision.");
+    }
+  });
+  return guarded;
 }
 
 async function withJournal<T>(run: (tx: Db) => Promise<T>, options?: Record<string, unknown>): Promise<T> {
