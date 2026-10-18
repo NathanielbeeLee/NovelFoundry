@@ -6,6 +6,7 @@ import type {
 } from "@novelfoundry/shared/types/novel";
 import { Button } from "@/components/ui/button";
 import type { ChapterEditorSessionState } from "./chapterEditorTypes";
+import { CandidateConsequencesPanel, type CandidateConsequencesPanelProps } from "./consequences/CandidateConsequencesPanel";
 
 interface ChapterEditorDirectorPanelProps {
   workspace: ChapterEditorWorkspaceResponse | null;
@@ -20,6 +21,8 @@ interface ChapterEditorDirectorPanelProps {
   isGenerating: boolean;
   isApplying: boolean;
   applyBlocked?: boolean;
+  acceptBlocked?: boolean;
+  consequences?: CandidateConsequencesPanelProps;
   onInstructionChange: (next: string) => void;
   onScopeChange: (scope: ChapterEditorRevisionScope) => void;
   onRunRecommended: () => void;
@@ -266,6 +269,7 @@ export default function ChapterEditorDirectorPanel(props: ChapterEditorDirectorP
                   size="sm"
                   variant={candidate.id === session.activeCandidateId ? "default" : "outline"}
                   onClick={() => onSelectCandidate(candidate.id)}
+                  disabled={isApplying}
                 >
                   {candidate.label}
                 </Button>
@@ -286,6 +290,7 @@ export default function ChapterEditorDirectorPanel(props: ChapterEditorDirectorP
                 </div>
               ) : null}
             </div>
+            {props.consequences && <CandidateConsequencesPanel {...props.consequences} />}
           </>
         ) : null}
       </div>
@@ -297,7 +302,7 @@ export default function ChapterEditorDirectorPanel(props: ChapterEditorDirectorP
         <Button size="sm" variant="outline" onClick={onRegenerate} disabled={isIdle || session.status === "loading" || isApplying || applyBlocked}>
           再生成
         </Button>
-        <Button size="sm" onClick={onAccept} disabled={session.status !== "ready" || !activeCandidate || isApplying || applyBlocked}>
+        <Button size="sm" onClick={onAccept} disabled={session.status !== "ready" || !activeCandidate || isApplying || applyBlocked || props.acceptBlocked}>
           {isApplying ? "应用中..." : "接受全部"}
         </Button>
       </div>

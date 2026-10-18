@@ -13,8 +13,21 @@ import type {
   ChapterStatus,
   ChapterContentWritePrecondition,
   ChapterSaveConflict,
+  ChapterEditorConsequenceRequest,
+  ChapterEditorConsequenceReport,
+  ChapterEditorConsequenceAdoptRequest,
 } from "@novelfoundry/shared/types/novel";
 import { apiClient } from "../client";
+
+export async function previewChapterConsequences(novelId: string, chapterId: string, payload: ChapterEditorConsequenceRequest) {
+  const { data } = await apiClient.post<ApiResponse<ChapterEditorConsequenceReport>>(`/novels/${novelId}/chapters/${chapterId}/editor/consequences`, payload, { silentErrorStatuses: [409] });
+  return data;
+}
+
+export async function adoptChapterConsequenceCandidate(novelId: string, chapterId: string, payload: ChapterEditorConsequenceAdoptRequest) {
+  const { data } = await apiClient.post<ApiResponse<Chapter>>(`/novels/${novelId}/chapters/${chapterId}/editor/consequences/adopt`, payload, { silentErrorStatuses: [409] });
+  return data;
+}
 
 export async function getNovelChapters(id: string) {
   const { data } = await apiClient.get<ApiResponse<Chapter[]>>(`/novels/${id}/chapters`);

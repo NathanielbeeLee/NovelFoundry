@@ -4,6 +4,7 @@ import { z } from "zod";
 import { AppError } from "../../../../middleware/errorHandler";
 import { validate } from "../../../../middleware/validate";
 import type { NovelApplicationServices } from "../../../../services/novel/application/NovelApplicationContracts";
+import { chapterEditorConsequenceRequestSchema, chapterEditorConsequenceAdoptRequestSchema } from "@novelfoundry/shared/types/novel";
 
 interface RegisterNovelChapterEditorRoutesInput {
   router: Router;
@@ -11,6 +12,8 @@ interface RegisterNovelChapterEditorRoutesInput {
     | "getChapterEditorWorkspace"
     | "previewChapterAiRevision"
     | "previewChapterRewrite"
+    | "previewChapterConsequences"
+    | "adoptChapterConsequenceCandidate"
   >;
   chapterParamsSchema: z.ZodType<{ id: string; chapterId: string }>;
   rewritePreviewSchema: z.ZodTypeAny;
@@ -27,6 +30,22 @@ export function registerNovelChapterEditorRoutes(input: RegisterNovelChapterEdit
     aiRevisionPreviewSchema,
     forwardBusinessError,
   } = input;
+
+  router.post("/:id/chapters/:chapterId/editor/consequences", validate({ params: chapterParamsSchema, body: chapterEditorConsequenceRequestSchema }), async (req, res, next) => {
+    try {
+      const { id, chapterId } = req.params as z.infer<typeof chapterParamsSchema>;
+      const data = await novelService.previewChapterConsequences(id, chapterId, req.body);
+      res.json({ success: true, data } satisfies ApiResponse<typeof data>);
+    } catch (error) { next(error); }
+  });
+
+  router.post("/:id/chapters/:chapterId/editor/consequences/adopt", validate({ params: chapterParamsSchema, body: chapterEditorConsequenceAdoptRequestSchema }), async (req, res, next) => {
+    try {
+      const { id, chapterId } = req.params as z.infer<typeof chapterParamsSchema>;
+      const data = await novelService.adoptChapterConsequenceCandidate(id, chapterId, req.body);
+      res.json({ success: true, data } satisfies ApiResponse<typeof data>);
+    } catch (error) { next(error); }
+  });
 
   router.get(
     "/:id/chapters/:chapterId/editor/workspace",

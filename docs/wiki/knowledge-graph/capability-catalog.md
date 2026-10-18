@@ -26,6 +26,7 @@ Git history and source notices provide separate copyright evidence.
 | Timeline constraints | timeline events, chapter anchors, and constraint reports |
 | Character resources | resource ledger items and pending proposals |
 | Book quality loop | book quality reports, accepted decisions, quality debt, and polish revisions |
+| Chapter edit impact preview | Advisory candidate reports bound to current prose and dependency revisions; [workflow](../workflows/chapter-edit-impact-preview.md) |
 | Backup and restore | portable project package and import receipt |
 
 See [Chapter production chain](../workflows/chapter-production-chain.md),

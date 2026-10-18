@@ -47,3 +47,17 @@ not create a second writer or bypass that boundary.
 A local issue can remain visible as quality debt while later chapters continue.
 Only an explicit replan, unusable output, or runtime/data-safety failure should
 pause the global chain.
+
+## Review a rewrite candidate
+
+In the chapter editor, choose an AI rewrite candidate and select the optional
+impact assessment. It compares the proposed change with this chapter, up to two
+planned later chapters and the supplied related information. Read the quoted
+evidence and distinguish a supported conflict from a possible future effect.
+
+Adopt the candidate when it fits your intent, or revise the local handoff first.
+If the draft, candidate or related plans change, assess again before using that
+report. An expired assessment preserves your candidate and asks for a new check.
+You can cancel the assessment and continue with ordinary editing. Predictions
+do not become story facts automatically, and missing evidence is not a guarantee
+that the rest of the novel is unaffected.

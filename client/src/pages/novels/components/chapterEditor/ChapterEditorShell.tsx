@@ -7,8 +7,9 @@ import type {
   ChapterEditorRecommendedTask,
   ChapterEditorRevisionScope,
   ChapterEditorTargetRange,
+  ChapterEditorConsequenceAdoptRequest,
 } from "@novelfoundry/shared/types/novel";
-import { createNovelSnapshot, previewChapterAiRevision, updateNovelChapter } from "@/api/novel";
+import { adoptChapterConsequenceCandidate, createNovelSnapshot, previewChapterAiRevision, updateNovelChapter } from "@/api/novel";
 import { getChapterSaveConflict } from "@/api/novel/chapters";
 import ChapterSaveConflictPanel from "./ChapterSaveConflictPanel";
 import { queryKeys } from "@/api/queryKeys";
@@ -18,6 +19,7 @@ import ChapterEditorDirectorPanel from "./ChapterEditorDirectorPanel";
 import ChapterEditorSidebar from "./ChapterEditorSidebar";
 import ChapterEditorLayout, { type ChapterEditorPanel } from "./ChapterEditorLayout";
 import ChapterTextEditor from "./ChapterTextEditor";
+import { useCandidateConsequences } from "./consequences/useCandidateConsequences";
 import SelectionAIFloatingToolbar from "./SelectionAIFloatingToolbar";
 import type {
   ChapterEditorSelectionRange,
@@ -146,6 +148,16 @@ export default function ChapterEditorShell(props: ChapterEditorShellProps) {
     () => workspace?.diagnosticCards.find((card) => card.id === selectedDiagnosticId) ?? null,
     [selectedDiagnosticId, workspace],
   );
+  const consequenceRequest = useMemo(() => session.status === "ready" && session.sessionId && session.targetRange && activeCandidate ? {
+    sessionId: session.sessionId,
+    candidate: { id: activeCandidate.id, content: activeCandidate.content },
+    contentSnapshot: contentDraft,
+    expectedContent: draft.sourceContent,
+    targetRange: session.targetRange,
+    provider: llm.provider,
+    model: llm.model,
+  } : null, [session.status, session.sessionId, session.targetRange, activeCandidate, contentDraft, draft.sourceContent, llm.provider, llm.model]);
+  const consequences = useCandidateConsequences(novelId, chapter?.id, consequenceRequest);
   const selectedDiagnosticSelection = useMemo(
     () => toSelectionFromRange(contentDraft, selectedDiagnosticCard?.anchorRange ?? null),
     [contentDraft, selectedDiagnosticCard?.anchorRange],
@@ -257,12 +269,17 @@ export default function ChapterEditorShell(props: ChapterEditorShellProps) {
   });
 
   const acceptMutation = useMutation({
-    mutationFn: async (write: { content: string; expectedContent: string | null; localBefore: string }) => {
+    mutationFn: async (write: { content: string; expectedContent: string | null; localBefore: string; consequence: ChapterEditorConsequenceAdoptRequest | null }) => {
       if (!chapter || !activeCandidate || !session.targetRange) {
         throw new Error("当前没有可应用的候选版本。");
       }
       const label = `chapter-editor:${chapter.order}:${session.scope}:${Date.now()}`;
       const nextContent = write.content;
+      if (write.consequence) {
+        const response = await adoptChapterConsequenceCandidate(novelId, chapter.id, write.consequence);
+        if (!response.data) throw new Error("候选采纳未返回保存结果，请刷新后核对。");
+        return response.data.content ?? "";
+      }
       await createNovelSnapshot(novelId, {
         triggerType: "manual",
         label,
@@ -283,8 +300,9 @@ export default function ChapterEditorShell(props: ChapterEditorShellProps) {
       await invalidateChapterQueries();
       if (mountedRef.current) toast.success("已应用候选版本，并创建 AI 修改前快照。");
     },
-    onError: (error) => {
+    onError: (error, write) => {
       if (!mountedRef.current) return;
+      if (write.consequence) consequences.markStale();
       setDraft((current) => ({ ...current, status: "error" }));
       const conflict = getChapterSaveConflict(error);
       setSaveConflict(conflict);
@@ -494,6 +512,12 @@ export default function ChapterEditorShell(props: ChapterEditorShellProps) {
           isGenerating={previewMutation.isPending}
           isApplying={acceptMutation.isPending}
           applyBlocked={saveMutation.isPending || Boolean(saveConflict)}
+          acceptBlocked={consequences.applyBlocked}
+          consequences={{
+            status: consequences.status, report: consequences.report, error: consequences.error,
+            onAssess: () => { void consequences.assess(); }, onCancel: consequences.cancel,
+            disabled: saveMutation.isPending || acceptMutation.isPending || Boolean(saveConflict),
+          }}
           onInstructionChange={setRevisionInstruction}
           onScopeChange={setRevisionScope}
           onRunRecommended={handleRunRecommended}
@@ -503,11 +527,14 @@ export default function ChapterEditorShell(props: ChapterEditorShellProps) {
           onChangeViewMode={(mode) => setSession((current) => ({ ...current, viewMode: mode }))}
           onAccept={() => {
             if (saveConflict || saveMutation.isPending || acceptMutation.isPending || !activeCandidate || !session.targetRange) return;
-            acceptMutation.mutate({
-              content: applyCandidateToContent(contentDraft, session.targetRange, activeCandidate.content),
-              localBefore: contentDraft,
-              expectedContent: draft.sourceContent,
-            });
+            try {
+              acceptMutation.mutate({
+                content: applyCandidateToContent(contentDraft, session.targetRange, activeCandidate.content),
+                localBefore: contentDraft,
+                expectedContent: draft.sourceContent,
+                consequence: consequences.adoptionRequest(),
+              });
+            } catch (error) { toast.error(error instanceof Error ? error.message : "请重新评估后采纳。"); }
           }}
           onReject={handleReject}
           onRegenerate={handleRegenerate}

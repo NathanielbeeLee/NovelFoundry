@@ -56,3 +56,23 @@ retain their draft and refresh the app. Metadata-only updates remain compatible.
 AI candidate application takes its existing pre-edit snapshot before attempting
 the guarded save; a conflict can leave an extra snapshot but cannot write the
 rejected candidate or its artifacts.
+
+## Optional candidate consequences
+
+The active candidate can request an advisory impact assessment without saving.
+The `consequences/` hook and panel retain the report only for its exact local
+snapshot, source baseline, candidate, selection, session and requested model.
+Changing those inputs or reaching receipt expiry makes the assessment stale;
+late responses from an older request cannot attach to another candidate.
+
+An assessed candidate always uses the server's guarded adoption endpoint. A
+failed, expired or stale assessment cannot silently fall back to ordinary save.
+The author can re-evaluate, retain/reject the candidate, or explicitly cancel
+assessment before using ordinary adoption. Unassessed editing keeps the existing
+path. Findings remain advice, display supplied evidence and uncertainty, and
+never create a mandatory planning wizard or director stop.
+
+Receipts last at most 15 minutes on one server instance and can be evicted or
+lost on restart/worker change. The resulting 409 preserves local content and
+candidate selection, with reassessment available. UI acceptance belongs to the
+user; no browser/visual check is required by this module contract.

@@ -16,6 +16,7 @@ import { ChapterRuntimeCoordinator } from "../../runtime/ChapterRuntimeCoordinat
 import { NovelVolumeService } from "../../volume/NovelVolumeService";
 import { NovelChapterEditorService } from "../../chapterEditor/NovelChapterEditorService";
 import { ChapterEditorWorkspaceService } from "../../chapterEditor/ChapterEditorWorkspaceService";
+import { ChapterEditorConsequenceService } from "../../chapterEditor/consequences";
 
 export class NovelApplicationContext {
   protected readonly core = new NovelCoreService();
@@ -45,6 +46,7 @@ export class NovelApplicationContext {
   protected readonly chapterEditorWorkspaceService = new ChapterEditorWorkspaceService();
 
   protected readonly chapterEditorService = new NovelChapterEditorService();
+  protected readonly editorConsequences = new ChapterEditorConsequenceService(undefined, this.core);
 
   protected readonly chapterRuntimeCoordinator = new ChapterRuntimeCoordinator();
 

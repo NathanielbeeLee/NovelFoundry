@@ -34,6 +34,7 @@ behind product decisions.
 
 - [Auto-director runtime](./workflows/auto-director-runtime.md)
 - [Chapter production chain](./workflows/chapter-production-chain.md)
+- [Chapter edit impact preview](./workflows/chapter-edit-impact-preview.md)
 - [Whole-book quality loop](./workflows/whole-book-quality-loop.md)
 - [Creative Hub boundary](./workflows/creative-hub-boundary.md)
 - [Volume planning](./workflows/volume-planning.md)

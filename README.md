@@ -334,6 +334,9 @@ are retained in [NOTICE](NOTICE).
 
 ### 2026-10-18
 
+- Rewrite candidates offer an optional impact assessment with quoted evidence,
+  nearby chapter references and clearly marked uncertainty. Changed drafts or
+  expired assessments require a fresh check before assessed adoption.
 - Saving a chapter preserves committed prose when follow-up processing fails.
   Earlier synchronization and indexing results cannot overwrite newer chapter
   facts, timelines or metadata; blank chapters skip AI extraction.

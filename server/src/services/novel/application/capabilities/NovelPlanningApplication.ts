@@ -5,8 +5,17 @@ import { NovelVolumeService } from "../../volume/NovelVolumeService";
 import { NovelChapterEditorService } from "../../chapterEditor/NovelChapterEditorService";
 import { ChapterEditorWorkspaceService } from "../../chapterEditor/ChapterEditorWorkspaceService";
 import { NovelApplicationContext } from "./NovelApplicationContext";
+import { ChapterEditorConsequenceService } from "../../chapterEditor/consequences";
 
 export class NovelPlanningApplication extends NovelApplicationContext {
+  previewChapterConsequences(...args: Parameters<ChapterEditorConsequenceService["preview"]>) {
+    return this.editorConsequences.preview(...args);
+  }
+
+  adoptChapterConsequenceCandidate(...args: Parameters<ChapterEditorConsequenceService["adopt"]>) {
+    return this.editorConsequences.adopt(...args);
+  }
+
   getVolumes(...args: Parameters<NovelVolumeService["getVolumes"]>) {
     return this.volumeService.getVolumes(...args);
   }
