@@ -129,7 +129,7 @@ export class StateService {
 
   async getLatestSnapshotBeforeChapter(novelId: string, chapterOrder: number) {
     const snapshots = await prisma.storyStateSnapshot.findMany({
-      where: { novelId },
+      where: { novelId, sourceChapter: { is: { order: { lt: chapterOrder } } } },
       include: {
         sourceChapter: {
           select: {

@@ -42,9 +42,14 @@ export function buildPatchedContent(
     if (!input.marker?.trim()) {
       throw new AgentToolError("INVALID_INPUT", "marker is required for replace_segment mode.");
     }
-    return base.includes(input.marker)
-      ? base.replace(input.marker, input.content)
-      : `${base}\n\n[PatchMarkerMissing:${input.marker}]\n${input.content}`.trim();
+    const start = base.indexOf(input.marker);
+    if (start === -1) {
+      throw new AgentToolError("INVALID_INPUT", "Replacement marker was not found. Read the current chapter and provide an exact excerpt.");
+    }
+    if (base.indexOf(input.marker, start + 1) !== -1) {
+      throw new AgentToolError("INVALID_INPUT", "Replacement marker is ambiguous. Provide a longer excerpt that occurs only once.");
+    }
+    return base.slice(0, start) + input.content + base.slice(start + input.marker.length);
   }
   return input.content;
 }

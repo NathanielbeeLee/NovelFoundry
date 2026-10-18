@@ -145,6 +145,16 @@ export function resolveProviderReasoningBehavior(input: {
   reasoningEnabled: boolean;
   reasoningEffort?: ReasoningEffort | null;
 }): ProviderReasoningBehavior {
+  if (input.provider === "ollama") {
+    return {
+      reasoningEnabled: input.reasoningEnabled,
+      reasoningEffort: null,
+      modelKwargs: input.reasoningEnabled ? undefined : { reasoning_effort: "none" },
+      includeRawResponse: false,
+      usesAccumulatedStreamDeltas: false,
+    };
+  }
+
   if (isGlmThinkingModeProvider(input.provider, input.baseURL, input.model)) {
     return {
       reasoningEnabled: input.reasoningEnabled,

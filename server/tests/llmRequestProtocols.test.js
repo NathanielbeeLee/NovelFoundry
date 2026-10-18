@@ -179,6 +179,54 @@ test("provider defaults are inherited while an explicit route protocol wins", as
   }
 });
 
+test("Ollama reasoning toggle reaches Chat Completions without forcing an enabled effort", async () => {
+  const requests = [];
+  const server = http.createServer(async (req, res) => {
+    const body = await readJsonRequest(req);
+    requests.push({ url: req.url, body });
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({
+      id: "ollama_reasoning_test",
+      object: "chat.completion",
+      created: 1_700_000_000,
+      model: body.model,
+      choices: [{
+        index: 0,
+        finish_reason: "stop",
+        message: { role: "assistant", content: "ok" },
+      }],
+    }));
+  });
+  const port = await listen(server);
+  setProviderSecretCache("ollama", {
+    model: "qwen3:8b",
+    baseURL: `http://127.0.0.1:${port}/v1`,
+    reasoningEnabled: false,
+  });
+  try {
+    for (const reasoningEnabled of [undefined, true]) {
+      const resolved = await resolveLLMClientOptions("ollama", { reasoningEnabled });
+      assert.equal(resolved.reasoningEnabled, reasoningEnabled ?? false);
+      const llm = createOpenAIProtocolClient({
+        apiKey: "ollama",
+        model: resolved.model,
+        maxRetries: 0,
+        modelKwargs: resolved.modelKwargs,
+        configuration: { baseURL: resolved.baseURL },
+      }, resolved.requestProtocol);
+      await llm.invoke("hello");
+    }
+    assert.deepEqual(requests.map((request) => request.url), [
+      "/v1/chat/completions", "/v1/chat/completions",
+    ]);
+    assert.equal(requests[0].body.reasoning_effort, "none");
+    assert.equal(Object.hasOwn(requests[1].body, "reasoning_effort"), false);
+  } finally {
+    setProviderSecretCache("ollama", null);
+    await close(server);
+  }
+});
+
 test("custom providers load CLIProxyAPI-style model ids from /v1/models", async () => {
   const requests = [];
   const server = http.createServer((req, res) => {

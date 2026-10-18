@@ -68,6 +68,23 @@ Regression checks use injected AI failures and disposable SQLite schemas.
 They verify retention, retry consumption, debt finalization, and interruption
 boundaries without using a writer's database or a live model provider.
 
+## State feedback context and output allowance
+
+Previous-state lookup restricts snapshots to source chapters strictly before the
+requested chapter before applying the recent-snapshot limit. Current or future
+chapters must not crowd earlier eligible state out of the query. Candidates
+retain the existing creation-time ordering and source-content hash validation;
+stale snapshots do not become canonical context. The lookup inspects the latest
+50 eligible candidates, so it can return no state if all 50 are stale even when
+an older valid candidate exists. Revisit that bound if repeated extraction or
+source edits produce that case.
+
+Chapter artifact extraction uses the registered prompt's output policy rather
+than a separate service-level token override. The current asset allows 8000
+output tokens, subject to the existing provider and structured-output limits;
+JSON repair keeps the prepared invocation allowance. This is the existing prompt
+policy, not a guarantee that task-route limits override registered prompt limits.
+
 ## Extension rule
 
 New routes, streams, jobs, or director commands may provide a different

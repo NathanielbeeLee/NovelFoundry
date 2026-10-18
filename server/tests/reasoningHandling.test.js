@@ -10,6 +10,18 @@ const {
   resolveProviderReasoningBehavior,
 } = require("../dist/llm/reasoning.js");
 
+test("Ollama thinking controls stay scoped to the selected provider", () => {
+  const input = {
+    baseURL: "http://localhost:11434/v1",
+    model: "qwen3:8b",
+    reasoningEnabled: false,
+  };
+  assert.deepEqual(resolveProviderReasoningBehavior({ ...input, provider: "ollama" }).modelKwargs,
+    { reasoning_effort: "none" });
+  assert.equal(resolveProviderReasoningBehavior({ ...input, provider: "custom_gateway" }).modelKwargs,
+    undefined);
+});
+
 test("deepseek v4 pro behavior maps reasoning toggle to thinking mode", () => {
   const disabled = resolveProviderReasoningBehavior({
     provider: "deepseek",

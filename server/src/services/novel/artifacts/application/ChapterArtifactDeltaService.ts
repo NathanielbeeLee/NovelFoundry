@@ -115,7 +115,6 @@ export class ChapterArtifactDeltaService {
         novelId: input.novelId,
         chapterId: input.chapterId,
         stage: "chapter_artifact_delta",
-        maxTokens: 4000,
         signal: input.signal,
       },
     });

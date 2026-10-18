@@ -7,6 +7,8 @@ import type {
   ModelRouteTaskType,
 } from "@novelfoundry/shared/types/novel";
 import { getLLM, resolveLLMClientOptions } from "./factory";
+import { ThinkTagStreamFilter } from "./reasoning";
+import { toText } from "../services/novel/novelP0Utils";
 import {
   getAutomaticProtocolCandidates,
   isExplicitModelRequestProtocol,
@@ -156,7 +158,19 @@ async function testPlainConnection(input: {
       requestProtocol: resolved.requestProtocol,
     });
     const start = Date.now();
-    await llm.invoke([new HumanMessage("请只回复 ok")]);
+    const response = await llm.invoke([new HumanMessage("请只回复 ok")]);
+    const content = typeof response.content === "string"
+      ? response.content
+      : Array.isArray(response.content)
+        ? toText(response.content.filter((part) => typeof part === "string"
+          || part.type === "text"
+          || part.type === "output_text"))
+        : "";
+    const thinkFilter = new ThinkTagStreamFilter();
+    const visibleText = thinkFilter.push(content).text + thinkFilter.flush().text;
+    if (!visibleText.trim()) {
+      throw new Error("模型未返回可见回复，请检查模型配置或输出额度后重试。");
+    }
     const plain = {
       ok: true,
       latency: Date.now() - start,

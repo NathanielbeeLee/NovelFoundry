@@ -6,6 +6,19 @@ below; their source evidence is retained in local maintainer archives.
 
 ## History
 
+### 2026-10-18
+
+- Chapter patch previews and saves require a unique passage in the current
+  manuscript, protecting prose when an AI revision points to missing or repeated
+  text. Replacement text preserves literal symbols.
+- Model connection checks require a visible answer before reporting success,
+  helping first-time setup catch empty or reasoning-only responses.
+- Ollama receives the disabled-thinking preference through compatible requests.
+- Chapter follow-up extraction uses its registered output allowance, giving
+  richer chapter facts and state more room to complete.
+- Revisiting an early chapter retrieves eligible earlier state even when many
+  later chapters have been processed.
+
 ### 2026-10-16
 
 - Chapter editing gives the manuscript room on laptop screens, with chapter

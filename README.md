@@ -332,18 +332,17 @@ are retained in [NOTICE](NOTICE).
 
 ## Latest update
 
-### 2026-10-16
+### 2026-10-18
 
-- Chapter editing gives the manuscript room on laptop screens, with chapter
-  context and AI revision available in dialogs when space is limited. Chapter
-  title, save status, and save stay in view.
-- Resizing between desktop and mobile layouts preserves unsaved chapter text
-  and undo history. Save-conflict choices remain reachable on short screens.
-- The header shows a compact current-model entry. Open it to choose a provider,
-  model, or temperature, or go directly to provider configuration.
-- NovelFoundry branding is consistent across the browser title, desktop startup
-  screens, and public documentation navigation.
-- Product screenshots show the current chapter editor, story-direction selection,
-  and Creative Hub with fictional example projects.
+- Chapter patch previews and saves require a unique passage in the current
+  manuscript, protecting prose when an AI revision points to missing or repeated
+  text. Replacement text preserves literal symbols.
+- Model connection checks require a visible answer before reporting success,
+  helping first-time setup catch empty or reasoning-only responses.
+- Ollama receives the disabled-thinking preference through compatible requests.
+- Chapter follow-up extraction uses its registered output allowance, giving
+  richer chapter facts and state more room to complete.
+- Revisiting an early chapter retrieves eligible earlier state even when many
+  later chapters have been processed.
 
 [Full update history](docs/releases/release-notes.md).

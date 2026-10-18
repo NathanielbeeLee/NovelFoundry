@@ -4,6 +4,16 @@ Model selection is a task policy, not a keyword switch. The route considers task
 
 Start with one verified default model. Add task-specific routes only after normal and structured tests pass. An explicit protocol choice must not silently fall through to another protocol after a formal request fails.
 
+## Visible-output probes
+
+A successful HTTP request alone does not establish plain generation capability.
+The plain probe requires non-empty final text, including supported text blocks.
+Reasoning fields, reasoning-only blocks and `<think>` content do not count as an
+answer. Empty output remains a failed probe with actionable configuration or
+output-budget guidance, so beginner setup does not claim readiness prematurely.
+This check establishes visible output only; structured capability has its own
+probe and neither result guarantees literary quality.
+
 ## Endpoint labels and model parameters
 
 A compatible relay can expose a model under a different provider label.

@@ -25,6 +25,17 @@ Creative Hub should explain real artifacts and the next action first, then show
 background task details. Every write action must use the owning application
 service and preserve the same recovery and permission contracts.
 
+## Chapter patch anchors
+
+Segment replacement requires an exact excerpt that occurs once in the current
+saved chapter, including overlapping occurrences. Missing, blank or ambiguous
+anchors fail before preview or persistence; the tool never guesses a location
+or turns a failed replacement into appended prose. Read the current chapter and
+provide a unique excerpt before trying again. Replacement text is inserted
+literally, including dollar-sign sequences. Explicit append and full replacement
+keep their separate modes and existing approval requirements. Successful writes
+still use the source-content precondition to reject a concurrent chapter edit.
+
 ## Stream result contract
 
 Message completion and transport closure do not prove that a Creative Hub run
