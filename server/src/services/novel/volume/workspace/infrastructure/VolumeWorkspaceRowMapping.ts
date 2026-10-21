@@ -48,4 +48,3 @@ export function toVolumeChapterPlanData(volumeId: string, chapter: VolumeChapter
     payoffRefsJson: JSON.stringify(chapter.payoffRefs),
   };
 }
-
