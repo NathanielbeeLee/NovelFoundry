@@ -147,8 +147,30 @@ mirror and index revisions additionally include their source revision.
 
 The editor instance belongs to the novel/chapter identity, not its query timestamp.
 A save acknowledges only submitted text. Later typing stays dirty through query
-refresh, failure and conflict. Switching chapters isolates late callbacks. This
-contract does not persist unsaved text after leaving the page.
+refresh, failure and conflict. Switching chapters isolates late callbacks.
+
+### Local draft recovery
+
+The editor keeps a device-local recovery copy of unfinished prose, separate from
+canonical chapter saves. Copies bind the novel, chapter, editing session, exact
+raw saved baseline (including null versus empty text), complete local prose and
+revision identity. On return, the author chooses whether to restore or discard a
+copy. Restoration does not save prose, run extraction, adopt AI suggestions or
+advance production. A changed server baseline requires explicit comparison using
+the existing save-conflict flow; the next save still uses compare-and-set.
+
+Successful saves remove only the acknowledged local revision. New typing during
+a pending save remains recoverable against the newly acknowledged baseline.
+Other tabs keep separate copies, and an older save/discard cannot delete a newer
+revision. Existing copies remain until explicitly discarded or superseded by a
+confirmed transfer/save; reaching age or capacity limits cannot silently evict
+unfinished prose. Storage failure leaves the in-memory text intact and explains
+that device recovery is unavailable, so the author can save or copy it.
+
+Recovery is limited to the current device/browser origin. It is neither portable
+backup nor a guarantee that the last keystroke survives immediate termination.
+Browser storage clearing or device loss can remove copies. Use canonical saves
+and the portable backup/export workflow for durable manuscript protection.
 
 Explicit manual reviews use a distinct registered evidence contract. AI judges
 reading impact, narrative function and counterevidence in one call; host checks

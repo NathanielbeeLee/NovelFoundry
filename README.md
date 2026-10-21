@@ -334,6 +334,9 @@ are retained in [NOTICE](NOTICE).
 
 ### 2026-10-21
 
+- Chapter editing keeps device-local recovery copies of unfinished prose and
+  offers restore or discard after navigation or refresh. New typing survives
+  save acknowledgements, and changed saved text still requires comparison.
 - AI book setup accepts unambiguous genre and story-mode names in its
   recommendations, reducing avoidable retries while rejecting conflicting
   choices.

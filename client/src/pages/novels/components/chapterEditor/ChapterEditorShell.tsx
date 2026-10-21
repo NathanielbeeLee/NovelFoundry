@@ -20,6 +20,7 @@ import ChapterEditorSidebar from "./ChapterEditorSidebar";
 import ChapterEditorLayout, { type ChapterEditorPanel } from "./ChapterEditorLayout";
 import ChapterTextEditor from "./ChapterTextEditor";
 import { useCandidateConsequences } from "./consequences/useCandidateConsequences";
+import { ChapterRecoveryPanel, useChapterRecovery, type ChapterRecoveryRecord } from "./recovery";
 import SelectionAIFloatingToolbar from "./SelectionAIFloatingToolbar";
 import type {
   ChapterEditorSelectionRange,
@@ -95,6 +96,7 @@ export default function ChapterEditorShell(props: ChapterEditorShellProps) {
 
   const [draft, setDraft] = useState(() => createChapterDraft(normalizedChapterContent, chapter?.content ?? null));
   const { content: contentDraft, savedContent, status: saveStatus } = draft;
+  const recovery = useChapterRecovery(novelId, chapter?.id, draft);
   const [saveConflict, setSaveConflict] = useState<ChapterSaveConflict | null>(null);
   const mountedRef = useRef(true);
   useEffect(() => {
@@ -183,16 +185,17 @@ export default function ChapterEditorShell(props: ChapterEditorShellProps) {
   };
 
   const saveMutation = useMutation({
-    mutationFn: async (write: { content: string; expectedContent: string | null }) => {
+    mutationFn: async (write: { content: string; expectedContent: string | null; recovery: ChapterRecoveryRecord | null }) => {
       if (!chapter) {
         throw new Error("当前未选中章节。");
       }
-      return updateNovelChapter(novelId, chapter.id, write);
+      return updateNovelChapter(novelId, chapter.id, { content: write.content, expectedContent: write.expectedContent });
     },
     onMutate: () => {
       setDraft((current) => ({ ...current, status: "saving" }));
     },
     onSuccess: async (_response, write) => {
+      recovery.acknowledge(write.recovery, write.content, write.expectedContent);
       if (mountedRef.current) setDraft((current) => acknowledgeChapterSave(current, write.content));
       await invalidateChapterQueries();
       if (mountedRef.current) toast.success("章节正文已保存。");
@@ -269,7 +272,7 @@ export default function ChapterEditorShell(props: ChapterEditorShellProps) {
   });
 
   const acceptMutation = useMutation({
-    mutationFn: async (write: { content: string; expectedContent: string | null; localBefore: string; consequence: ChapterEditorConsequenceAdoptRequest | null }) => {
+    mutationFn: async (write: { content: string; expectedContent: string | null; localBefore: string; consequence: ChapterEditorConsequenceAdoptRequest | null; recovery: ChapterRecoveryRecord | null }) => {
       if (!chapter || !activeCandidate || !session.targetRange) {
         throw new Error("当前没有可应用的候选版本。");
       }
@@ -292,6 +295,7 @@ export default function ChapterEditorShell(props: ChapterEditorShellProps) {
     },
     onMutate: () => { setDraft((current) => ({ ...current, status: "saving" })); },
     onSuccess: async (nextContent, write) => {
+      recovery.acknowledge(write.recovery, nextContent, write.expectedContent);
       if (mountedRef.current) {
         setDraft((current) => acknowledgeChapterSave({ ...current, content: current.content === write.localBefore ? nextContent : current.content }, nextContent));
         setSession(EMPTY_SESSION);
@@ -460,10 +464,30 @@ export default function ChapterEditorShell(props: ChapterEditorShellProps) {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-4">
+      <ChapterRecoveryPanel
+        pending={recovery.pending} error={recovery.error} protected={recovery.protected}
+        baseline={chapter.content ?? null} isDirty={isDirty}
+        disabled={saveMutation.isPending || acceptMutation.isPending || session.status !== "idle"}
+        onDiscard={recovery.discard}
+        onRestore={(record) => {
+          if (isDirty || saveMutation.isPending || acceptMutation.isPending || session.status !== "idle") return;
+          recovery.restore(record);
+          setDraft(editChapterDraft(createChapterDraft(normalizeChapterContent(record.baseline ?? ""), record.baseline), record.content));
+          setSaveConflict(record.baseline !== (chapter.content ?? null) ? {
+            code: "CHAPTER_CONTENT_CONFLICT", chapterId: chapter.id,
+            currentContent: chapter.content ?? null, updatedAt: chapter.updatedAt,
+          } : null);
+          setSelection(null);
+          setSelectionToolbarPosition(null);
+          setSession(EMPTY_SESSION);
+          lastPreviewRequestRef.current = null;
+        }}
+      />
       {saveConflict && <ChapterSaveConflictPanel
         localContent={contentDraft}
         conflict={saveConflict}
         onResolve={(keepLocal) => {
+          if (!keepLocal) recovery.discardCurrent();
           setDraft((current) => resolveChapterConflict(current,
             normalizeChapterContent(saveConflict.currentContent ?? ""), saveConflict.currentContent, keepLocal));
           setSaveConflict(null);
@@ -489,7 +513,7 @@ export default function ChapterEditorShell(props: ChapterEditorShellProps) {
         onOpenVersionHistory={onOpenVersionHistory}
         onSave={() => {
           if (!saveConflict && !saveMutation.isPending && !acceptMutation.isPending) {
-            saveMutation.mutate({ content: contentDraft, expectedContent: draft.sourceContent });
+            saveMutation.mutate({ content: contentDraft, expectedContent: draft.sourceContent, recovery: recovery.beginSave() });
           }
         }}
         context={<ChapterEditorSidebar
@@ -533,6 +557,7 @@ export default function ChapterEditorShell(props: ChapterEditorShellProps) {
                 localBefore: contentDraft,
                 expectedContent: draft.sourceContent,
                 consequence: consequences.adoptionRequest(),
+                recovery: recovery.beginSave(),
               });
             } catch (error) { toast.error(error instanceof Error ? error.message : "请重新评估后采纳。"); }
           }}
@@ -544,6 +569,7 @@ export default function ChapterEditorShell(props: ChapterEditorShellProps) {
           value={contentDraft}
           readOnly={session.status !== "idle" || acceptMutation.isPending}
           onChange={(next) => {
+            recovery.capture(editChapterDraft(draft, next));
             setDraft((current) => editChapterDraft(current, next));
           }}
           onSelectionChange={(nextSelection, position) => {
