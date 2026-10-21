@@ -332,31 +332,10 @@ are retained in [NOTICE](NOTICE).
 
 ## Latest update
 
-### 2026-10-18
+### 2026-10-21
 
-- Unavailable chapter audits show an unscored result and preserve usable prose
-  as review work. Nested review and repair retries share a request limit while
-  later chapters can continue with visible quality debt.
-- Streaming generation respects model concurrency limits through completion,
-  with cancellation and timeouts that close stalled requests. Interrupted
-  Anthropic responses require a fresh attempt instead of appearing complete.
-- Rewrite candidates offer an optional impact assessment with quoted evidence,
-  nearby chapter references and clearly marked uncertainty. Changed drafts or
-  expired assessments require a fresh check before assessed adoption.
-- Saving a chapter preserves committed prose when follow-up processing fails.
-  Earlier synchronization and indexing results cannot overwrite newer chapter
-  facts, timelines or metadata; blank chapters skip AI extraction.
-- Trial batches and resumed chapter runs keep the full novel size in planning
-  context while writing only the selected chapter range.
-- Chapter patch previews and saves require a unique passage in the current
-  manuscript, protecting prose when an AI revision points to missing or repeated
-  text. Replacement text preserves literal symbols.
-- Model connection checks require a visible answer before reporting success,
-  helping first-time setup catch empty or reasoning-only responses.
-- Ollama receives the disabled-thinking preference through compatible requests.
-- Chapter follow-up extraction uses its registered output allowance, giving
-  richer chapter facts and state more room to complete.
-- Revisiting an early chapter retrieves eligible earlier state even when many
-  later chapters have been processed.
+- AI book setup accepts unambiguous genre and story-mode names in its
+  recommendations, reducing avoidable retries while rejecting conflicting
+  choices.
 
 [Full update history](docs/releases/release-notes.md).

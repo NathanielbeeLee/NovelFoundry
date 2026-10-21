@@ -6,6 +6,12 @@ below; their source evidence is retained in local maintainer archives.
 
 ## History
 
+### 2026-10-21
+
+- AI book setup accepts unambiguous genre and story-mode names in its
+  recommendations, reducing avoidable retries while rejecting conflicting
+  choices.
+
 ### 2026-10-18
 
 - Unavailable chapter audits show an unscored result and preserve usable prose

@@ -45,3 +45,21 @@ Before adding a new workflow, ask whether it helps a beginner reach a readable
 chapter, reduces a real decision burden, or improves recoverability. If it adds
 another state machine, prompt path, or required form without improving that
 outcome, keep it out of the main path.
+
+## Book setup resource recommendations
+
+AI selects the genre foundation and primary/optional secondary story mode from
+the supplied catalog through `novel.create.resource_recommendation`. The
+application validates the structured selection before resolving saved resources;
+it does not infer a genre or story mode from keywords in the author's idea.
+
+Catalog normalization may accept an exact allowed ID, an existing one-based
+ordinal, or a unique exact name/path. A name with an ordinal must identify the
+same catalog entry. Conflicting labels, unknown entries, and ambiguous names
+remain validation errors for the bounded AI retry. Never select an entry using
+only the number attached to an unrecognized name. The optional secondary mode
+must still differ from the primary and include its recommendation reason.
+
+Keep catalog identities in the registered prompt input and version changes to
+post-validation semantics. This normalization removes avoidable formatting
+failures without creating a second planning or recommendation path.

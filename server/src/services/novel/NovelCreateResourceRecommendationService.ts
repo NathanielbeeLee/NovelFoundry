@@ -216,6 +216,8 @@ export class NovelCreateResourceRecommendationService {
         storyModeCatalogText: buildStoryModeCatalogText(options.storyModes),
         allowedGenreIds: options.genres.map((item) => item.id),
         allowedStoryModeIds: options.storyModes.map((item) => item.id),
+        genreCatalogOptions: options.genres.map(({ id, name, path }) => ({ id, name, path })),
+        storyModeCatalogOptions: options.storyModes.map(({ id, name, path }) => ({ id, name, path })),
       },
       options: {
         provider: input.provider,

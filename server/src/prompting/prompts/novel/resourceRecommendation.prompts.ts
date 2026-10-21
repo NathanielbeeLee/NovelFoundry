@@ -3,24 +3,55 @@ import { z } from "zod";
 import type { PromptAsset } from "../../core/promptTypes";
 import { novelCreateResourceRecommendationSchema } from "./resourceRecommendation.promptSchemas";
 
+interface ResourceCatalogOption {
+  id: string;
+  name: string;
+  path: string;
+}
+
 export interface NovelCreateResourceRecommendationPromptInput {
   userIntentSummary: string;
   genreCatalogText: string;
   storyModeCatalogText: string;
   allowedGenreIds: string[];
   allowedStoryModeIds: string[];
+  genreCatalogOptions?: ResourceCatalogOption[];
+  storyModeCatalogOptions?: ResourceCatalogOption[];
 }
 
-function resolveCatalogSelectionId(value: string, allowedIds: string[]): string | null {
+function resolveCatalogSelectionId(
+  value: string,
+  allowedIds: string[],
+  options: ResourceCatalogOption[] = [],
+): string | null {
   const normalized = value.trim();
   if (allowedIds.includes(normalized)) {
     return normalized;
   }
   const ordinal = Number(normalized);
-  if (!Number.isSafeInteger(ordinal) || ordinal < 1 || String(ordinal) !== normalized) {
+  if (Number.isSafeInteger(ordinal) && ordinal >= 1 && String(ordinal) === normalized) {
+    return allowedIds[ordinal - 1] ?? null;
+  }
+
+  // Normalize only an already-selected catalog label, never infer an AI choice.
+  const findExactOptions = (label: string) => options.filter((option) => (
+    allowedIds.includes(option.id) && (option.name === label || option.path === label)
+  ));
+  const exact = findExactOptions(normalized);
+  if (exact.length > 0) {
+    return exact.length === 1 ? exact[0].id : null;
+  }
+  const annotated = normalized.match(/^(.+?)(?:（([1-9]\d*)）|\(([1-9]\d*)\))$/);
+  if (!annotated) {
     return null;
   }
-  return allowedIds[ordinal - 1] ?? null;
+  const matches = findExactOptions(annotated[1].trim());
+  const annotatedOrdinal = Number(annotated[2] ?? annotated[3]);
+  // An unknown/ambiguous label or conflicting ordinal must reach semantic retry.
+  return matches.length === 1 && Number.isSafeInteger(annotatedOrdinal)
+    && allowedIds[annotatedOrdinal - 1] === matches[0].id
+    ? matches[0].id
+    : null;
 }
 
 function formatAllowedIds(ids: string[]): string {
@@ -32,7 +63,7 @@ export const novelCreateResourceRecommendationPrompt: PromptAsset<
   z.infer<typeof novelCreateResourceRecommendationSchema>
 > = {
   id: "novel.create.resource_recommendation",
-  version: "v2",
+  version: "v3",
   taskType: "planner",
   mode: "structured",
   language: "zh",
@@ -94,8 +125,10 @@ export const novelCreateResourceRecommendationPrompt: PromptAsset<
     ].join("\n")),
   ],
   postValidate: (output, input) => {
-    const genreId = resolveCatalogSelectionId(output.genreId, input.allowedGenreIds);
-    const primaryStoryModeId = resolveCatalogSelectionId(output.primaryStoryModeId, input.allowedStoryModeIds);
+    const genreId = resolveCatalogSelectionId(output.genreId, input.allowedGenreIds, input.genreCatalogOptions);
+    const primaryStoryModeId = resolveCatalogSelectionId(
+      output.primaryStoryModeId, input.allowedStoryModeIds, input.storyModeCatalogOptions,
+    );
 
     if (!genreId) {
       throw new Error(`题材推荐结果包含非法 ID：${output.genreId}。可选 ID：${formatAllowedIds(input.allowedGenreIds)}`);
@@ -107,7 +140,7 @@ export const novelCreateResourceRecommendationPrompt: PromptAsset<
 
     const secondaryRawId = output.secondaryStoryModeId?.trim() ?? "";
     const secondaryStoryModeId = secondaryRawId
-      ? resolveCatalogSelectionId(secondaryRawId, input.allowedStoryModeIds)
+      ? resolveCatalogSelectionId(secondaryRawId, input.allowedStoryModeIds, input.storyModeCatalogOptions)
       : null;
     if (secondaryRawId) {
       if (!secondaryStoryModeId) {
