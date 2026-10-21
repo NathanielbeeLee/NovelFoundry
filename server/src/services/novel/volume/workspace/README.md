@@ -5,13 +5,19 @@ Callers enter through `../NovelVolumeService.ts`.
 - `domain/updateInput.ts` defines the workspace update input.
 - `infrastructure/VolumeWorkspacePersistenceService.ts` owns document/version
   persistence, canonical chapter hydration, mirroring, and existing payoff
-  synchronization adapters.
+  synchronization adapters. Shared row serialization, legacy-source queries and
+  arc compatibility each live in owned infrastructure adapters.
 - `application/NovelVolumeService.ts` owns public generation, version,
   synchronization, compatibility, and workspace commands.
+- [`routeWindow/`](./routeWindow/README.md) owns the read-only snapshot and
+  append-only transaction used by automatic rolling planning. It preserves saved
+  chapter contracts and version-only fields and never runs the manual full-sync
+  path over existing execution rows.
 
 Persistence capabilities execute on the application service instance. They
 retain the same active version, event emission, chapter matching, and payoff
-ledger rules; they do not create an independent workspace or transaction path.
+ledger rules; they do not create an independent workspace. Route append reuses the same
+transaction runner and active-version writer while limiting mutations to additions.
 Keep this base internal and use the stable service entry across modules.
 
 ## Final document ordering

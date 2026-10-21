@@ -1,3 +1,5 @@
+import { syncArcCompatibility } from "./workspace/infrastructure/VolumeArcCompatibility";
+import { toVolumePlanData, toVolumeChapterPlanData } from "./workspace/infrastructure/VolumeWorkspaceRowMapping";
 import type { VolumeChapterPlan, VolumePlan, VolumePlanDocument } from "@novelfoundry/shared/types/novel";
 import type { Prisma } from "@prisma/client";
 import { artifactPrisma as prisma, currentChapterSource } from "../artifacts/persistence";
@@ -58,100 +60,7 @@ export async function getLatestVersionRow(novelId: string, db: DbClient = prisma
   });
 }
 
-async function syncArcCompatibility(
-  tx: Prisma.TransactionClient,
-  novelId: string,
-  volumes: VolumePlan[],
-): Promise<void> {
-  const externalRefs = volumes.map((volume) => `volume:${volume.sortOrder}`);
-  await tx.storyPlan.deleteMany({
-    where: {
-      novelId,
-      level: "arc",
-      externalRef: {
-        startsWith: "volume:",
-        notIn: externalRefs,
-      },
-    },
-  });
 
-  for (const volume of volumes) {
-    const externalRef = `volume:${volume.sortOrder}`;
-    const existing = await tx.storyPlan.findFirst({
-      where: { novelId, level: "arc", externalRef },
-      select: { id: true },
-    });
-    const payload = {
-      title: volume.title,
-      objective: volume.mainPromise ?? volume.summary ?? `推进第${volume.sortOrder}卷主线。`,
-      phaseLabel: volume.escalationMode ?? null,
-      hookTarget: volume.nextVolumeHook ?? null,
-      rawPlanJson: JSON.stringify({
-        volumeTitle: volume.title,
-        summary: volume.summary,
-        openingHook: volume.openingHook,
-        mainPromise: volume.mainPromise,
-        primaryPressureSource: volume.primaryPressureSource,
-        coreSellingPoint: volume.coreSellingPoint,
-        escalationMode: volume.escalationMode,
-        protagonistChange: volume.protagonistChange,
-        midVolumeRisk: volume.midVolumeRisk,
-        climax: volume.climax,
-        payoffType: volume.payoffType,
-        nextVolumeHook: volume.nextVolumeHook,
-        resetPoint: volume.resetPoint,
-        openPayoffs: volume.openPayoffs,
-        chapters: volume.chapters.map((chapter) => ({
-          chapterOrder: chapter.chapterOrder,
-          beatKey: chapter.beatKey ?? null,
-          title: chapter.title,
-          summary: chapter.summary,
-        })),
-      }),
-      revealsJson: volume.openPayoffs.length > 0 ? JSON.stringify(volume.openPayoffs) : null,
-      mustAdvanceJson: JSON.stringify(volume.chapters.map((chapter) => `第${chapter.chapterOrder}章 ${chapter.title}`)),
-      status: "active",
-      externalRef,
-    };
-    if (existing) {
-      await tx.storyPlan.update({
-        where: { id: existing.id },
-        data: payload,
-      });
-    } else {
-      await tx.storyPlan.create({
-        data: {
-          novelId,
-          level: "arc",
-          ...payload,
-        },
-      });
-    }
-  }
-}
-
-function toVolumePlanData(
-  novelId: string,
-  volume: VolumePlan,
-  sourceVersionId: string | null,
-): Prisma.VolumePlanUncheckedCreateInput {
-  return {
-    id: volume.id,
-    novelId,
-    sortOrder: volume.sortOrder,
-    title: volume.title,
-    summary: volume.summary ?? null,
-    mainPromise: volume.mainPromise ?? null,
-    escalationMode: volume.escalationMode ?? null,
-    protagonistChange: volume.protagonistChange ?? null,
-    climax: volume.climax ?? null,
-    nextVolumeHook: volume.nextVolumeHook ?? null,
-    resetPoint: volume.resetPoint ?? null,
-    openPayoffsJson: JSON.stringify(volume.openPayoffs),
-    status: volume.status,
-    sourceVersionId,
-  };
-}
 
 function toVolumePlanUpdateData(
   novelId: string,
@@ -162,29 +71,6 @@ function toVolumePlanUpdateData(
   return data;
 }
 
-function toVolumeChapterPlanData(volumeId: string, chapter: VolumeChapterPlan): Prisma.VolumeChapterPlanUncheckedCreateInput {
-  const hasConflictLevel = Object.prototype.hasOwnProperty.call(chapter, "conflictLevel");
-  const conflictLevelSource = hasConflictLevel
-    ? chapter.conflictLevelSource ?? "ai"
-    : chapter.conflictLevelSource ?? null;
-  return {
-    id: chapter.id,
-    volumeId,
-    chapterId: chapter.chapterId ?? null,
-    chapterOrder: chapter.chapterOrder,
-    title: chapter.title,
-    summary: chapter.summary,
-    purpose: chapter.purpose ?? null,
-    conflictLevel: chapter.conflictLevel ?? null,
-    conflictLevelSource,
-    revealLevel: chapter.revealLevel ?? null,
-    targetWordCount: chapter.targetWordCount ?? null,
-    mustAvoid: chapter.mustAvoid ?? null,
-    taskSheet: chapter.taskSheet ?? null,
-    sceneCards: chapter.sceneCards ?? null,
-    payoffRefsJson: JSON.stringify(chapter.payoffRefs),
-  };
-}
 
 function isExplicitConflictLevelRelease(params: {
   existingSource?: string | null;

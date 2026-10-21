@@ -2,7 +2,7 @@ import type { LLMProvider } from "@novelfoundry/shared/types/llm";
 import type { DirectorCompletionProfile } from "@novelfoundry/shared/types/directorCompletion";
 import type { VolumePlanDocument } from "@novelfoundry/shared/types/novel";
 import { prisma } from "../../../db/prisma";
-import { NovelVolumeService } from "../volume/NovelVolumeService";
+import { NovelVolumeService, countContinuousRouteWindow, type RouteWindowSnapshot } from "../volume/NovelVolumeService";
 import {
   getBeatExpectedChapterCount,
   resolveVolumeChapterBeatKey,
@@ -65,12 +65,18 @@ export class ChapterRouteWindowService {
       : remaining != null && remaining <= 8
         ? `紧凑全书收束规划：剩余约 ${remaining} 章。优先完成主冲突、关系变化和未兑现回报，不扩展远期世界或新主线。`
         : undefined;
-    let availableRouteCount = await this.countAvailableRoute(novelId, fromChapterOrder, bookEnd);
+    let snapshot = await this.volumeService.readRouteWindowWorkspace(novelId);
+    let workspace = snapshot.document;
+    let availableRouteCount = await this.countAvailableRoute(novelId, workspace, fromChapterOrder, bookEnd);
     if (availableRouteCount >= minimum) {
       return { availableRouteCount, extended: false };
     }
 
-    let workspace = await this.volumeService.getVolumes(novelId);
+    // Saved plans are sufficient to rebuild missing execution rows without another AI call.
+    snapshot = await this.volumeService.appendRouteWindow(novelId, workspace, snapshot, { endOrder: bookEnd });
+    workspace = snapshot.document;
+    availableRouteCount = await this.countAvailableRoute(novelId, workspace, fromChapterOrder, bookEnd);
+    if (availableRouteCount >= minimum) return { availableRouteCount, extended: false };
     let extended = false;
     const visited = new Set<string>();
     while (availableRouteCount < target) {
@@ -87,18 +93,19 @@ export class ChapterRouteWindowService {
       if (!next) {
         const expandedWorkspace = await this.extendFutureVolumeSkeleton(
           novelId,
-          workspace,
+          snapshot,
           options,
         );
         if (!expandedWorkspace) {
           break;
         }
-        workspace = expandedWorkspace;
+        snapshot = expandedWorkspace;
+        workspace = snapshot.document;
         extended = true;
         continue;
       }
       if (!next.beatKey) {
-        workspace = await this.volumeService.generateVolumes(novelId, {
+        const generated = await this.volumeService.generateVolumes(novelId, {
           scope: "beat_sheet",
           targetVolumeId: next.volumeId,
           draftWorkspace: workspace,
@@ -108,16 +115,17 @@ export class ChapterRouteWindowService {
           taskId: options.taskId,
           guidance: closingGuidance,
           entrypoint: "jit_route_window",
+          persistIntermediateDocuments: false,
         });
-        workspace = await this.volumeService.updateVolumesWithOptions(novelId, workspace, {
-          emitEvent: false,
-          syncPayoffLedger: false,
-          volumeUpdateReason: "chapter_execution_contract_refined",
-        });
+        snapshot = await this.volumeService.appendRouteWindow(novelId, generated, snapshot, { endOrder: bookEnd });
+        workspace = snapshot.document;
+        if (!workspace.beatSheets.some(sheet => sheet.volumeId === next.volumeId && sheet.beats.length)) {
+          throw new Error("未补出可用节奏板，已保留已有计划，请重试当前规划步骤。");
+        }
         continue;
       }
 
-      workspace = await this.volumeService.generateVolumes(novelId, {
+      const generated = await this.volumeService.generateVolumes(novelId, {
         scope: "chapter_list",
         targetVolumeId: next.volumeId,
         generationMode: "single_beat",
@@ -129,27 +137,29 @@ export class ChapterRouteWindowService {
         taskId: options.taskId,
         guidance: closingGuidance,
         entrypoint: "jit_route_window",
+        persistIntermediateDocuments: false,
       });
-      await this.volumeService.syncVolumeChaptersWithOptions(novelId, {
-        volumes: workspace.volumes,
-        preserveContent: true,
-        applyDeletes: false,
-        allowIncompleteExecutionContracts: true,
-      }, {
-        emitEvent: false,
-        syncPayoffLedger: false,
-      });
+      snapshot = await this.volumeService.appendRouteWindow(novelId, generated, snapshot, { endOrder: bookEnd });
+      workspace = snapshot.document;
       extended = true;
-      availableRouteCount = await this.countAvailableRoute(novelId, fromChapterOrder, bookEnd);
+      const previousCount = availableRouteCount;
+      availableRouteCount = await this.countAvailableRoute(novelId, workspace, fromChapterOrder, bookEnd);
+      if (availableRouteCount <= previousCount) {
+        throw new Error("未补出所需的连续章节路线，已保留已有计划，请重试当前规划步骤。");
+      }
+    }
+    if (availableRouteCount < minimum) {
+      throw new Error("已保存规划缺少所需的连续章节路线，请核对缺失章序后重试当前规划步骤。");
     }
     return { availableRouteCount, extended };
   }
 
   private async extendFutureVolumeSkeleton(
     novelId: string,
-    workspace: VolumePlanDocument,
+    snapshot: RouteWindowSnapshot,
     options: ChapterRouteWindowOptions,
-  ): Promise<VolumePlanDocument | null> {
+  ): Promise<RouteWindowSnapshot | null> {
+    const workspace = snapshot.document;
     const targetChapterCount = options.completionProfile?.targetChapterCount ?? 0;
     const plannedChapterEnd = Math.max(
       0,
@@ -172,34 +182,29 @@ export class ChapterRouteWindowService {
       temperature: options.temperature,
       taskId: options.taskId,
       entrypoint: "jit_route_window",
+      persistIntermediateDocuments: false,
       guidance: [
         "滚动生产需要补齐后续卷骨架。",
         "已有卷及其章节已经进入生产，必须视为固定事实；只为尚未创建的后续卷安排承接、升级和兑现。",
         `全书目标约 ${targetChapterCount} 章；当前只补卷级骨架，不拆远期章节。`,
       ].join("\n"),
     });
-    const futureVolumes = generatedSkeleton.volumes.slice(workspace.volumes.length);
-    if (futureVolumes.length === 0) {
-      return null;
-    }
-    return this.volumeService.updateVolumesWithOptions(novelId, {
-      volumes: [...workspace.volumes, ...futureVolumes],
-      beatSheets: workspace.beatSheets,
-      rebalanceDecisions: workspace.rebalanceDecisions,
-    }, {
-      emitEvent: false,
-      syncPayoffLedger: false,
-      volumeUpdateReason: "chapter_execution_contract_refined",
-    });
+    const futureVolumes = generatedSkeleton.volumes.filter(volume => !workspace.volumes.some(saved => saved.id === volume.id));
+    if (futureVolumes.length === 0) return null;
+    return this.volumeService.appendRouteWindow(novelId, {
+      ...workspace, volumes: [...workspace.volumes, ...futureVolumes],
+    }, snapshot, { endOrder: options.completionProfile?.targetChapterCount });
   }
 
-  private async countAvailableRoute(novelId: string, fromChapterOrder: number, endOrder?: number): Promise<number> {
-    return prisma.chapter.count({
+  private async countAvailableRoute(novelId: string, workspace: VolumePlanDocument, fromChapterOrder: number, endOrder?: number): Promise<number> {
+    const chapters = await prisma.chapter.findMany({
       where: {
         novelId,
         order: { gte: fromChapterOrder, ...(endOrder == null ? {} : { lte: endOrder }) },
       },
+      orderBy: { order: "asc" }, select: { id: true, order: true },
     });
+    return countContinuousRouteWindow(workspace, chapters, fromChapterOrder, endOrder);
   }
 
   private findNextRouteTarget(workspace: VolumePlanDocument): { volumeId: string; beatKey: string | null } | null {

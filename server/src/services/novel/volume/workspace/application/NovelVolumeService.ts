@@ -33,6 +33,8 @@ import { resolveVolumeGenerationTelemetryItemKey, resolveVolumeGenerationTelemet
 import { VolumeWorkspacePersistenceService } from "../infrastructure/VolumeWorkspacePersistenceService";
 
 import { extractVolumeWorkspaceUpdateInput } from "../domain/updateInput";
+import { artifactPrisma } from "../../../artifacts/persistence";
+import { RouteWindowRepository, type RouteWindowSnapshot, type RouteWindowAppendOptions } from "../routeWindow";
 
 export class NovelVolumeService extends VolumeWorkspacePersistenceService {
   private readonly storyMacroPlanService = new StoryMacroPlanService();
@@ -41,6 +43,23 @@ export class NovelVolumeService extends VolumeWorkspacePersistenceService {
 
   async getVolumes(novelId: string): Promise<VolumePlanDocument> {
     return this.ensureVolumeWorkspace(novelId);
+  }
+
+  private routeWindowRepository(): RouteWindowRepository {
+    return new RouteWindowRepository({
+      db: artifactPrisma,
+      transaction: runVolumeWorkspaceTransaction,
+      ensureVersion: (tx, novelId, document) => this.ensureActiveVersionRecord(tx, novelId, document),
+    });
+  }
+
+  async readRouteWindowWorkspace(novelId: string): Promise<RouteWindowSnapshot> {
+    return this.routeWindowRepository().read(novelId);
+  }
+
+  async appendRouteWindow(novelId: string, generated: VolumePlanDocument, expected: RouteWindowSnapshot,
+    options: RouteWindowAppendOptions = {}): Promise<RouteWindowSnapshot> {
+    return this.routeWindowRepository().append(novelId, generated, expected, options);
   }
 
   async updateVolumes(novelId: string, input: unknown): Promise<VolumePlanDocument> {
@@ -344,7 +363,10 @@ export class NovelVolumeService extends VolumeWorkspacePersistenceService {
 
   async generateVolumes(novelId: string, options: VolumeGenerateOptions = {}): Promise<VolumePlanDocument> {
     return withHighMemoryVolumeGenerationGuard(novelId, options, async () => {
-      const persistedWorkspace = await this.ensureVolumeWorkspace(novelId);
+      const readOnlyGeneration = options.entrypoint === "jit_route_window" || options.persistIntermediateDocuments === false;
+      const persistedWorkspace = readOnlyGeneration
+        ? (await this.readRouteWindowWorkspace(novelId)).document
+        : await this.ensureVolumeWorkspace(novelId);
       const workspace = options.draftWorkspace
         ? mergeVolumeWorkspaceInput(novelId, persistedWorkspace, options.draftWorkspace)
         : options.draftVolumes
@@ -376,7 +398,8 @@ export class NovelVolumeService extends VolumeWorkspacePersistenceService {
             || options.scope === "volume"
           )
             ? async (event) => {
-              const shouldPersistIntermediate = event.isFinal !== false || options.persistIntermediateDocuments === true;
+              const shouldPersistIntermediate = !readOnlyGeneration
+                && (event.isFinal !== false || options.persistIntermediateDocuments === true);
               const persistedDocument = shouldPersistIntermediate
                 ? await this.persistWorkspaceDocument(novelId, event.document, {
                   emitEvent: false,

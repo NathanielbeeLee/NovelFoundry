@@ -8,6 +8,9 @@ below; their source evidence is retained in local maintainer archives.
 
 ### 2026-10-21
 
+- Automatic chapter planning fills missing routes while preserving existing
+  chapter plans and prose, and checks that the next chapters form a continuous
+  range before writing continues.
 - Chapter editing keeps device-local recovery copies of unfinished prose and
   offers restore or discard after navigation or refresh. New typing survives
   save acknowledgements, and changed saved text still requires comparison.

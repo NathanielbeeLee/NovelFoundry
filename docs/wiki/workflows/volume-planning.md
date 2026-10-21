@@ -20,6 +20,41 @@ generation. The job's start and end remain the authority for prose execution.
 
 See the [production planning boundary](../../../server/src/services/novel/production/planning/README.md).
 
+## Automatic route completion
+
+Just-in-time planning fills a continuous chapter window from the requested
+chapter, bounded by the book's planning target. Later rows cannot compensate for
+a gap: orders 1, 3 and 4 do not form a three-chapter window starting at 1. A route
+is available only when its saved plan and execution row agree on chapter identity
+and order. Existing saved routes should reconstruct missing empty execution rows before asking AI for more
+planning.
+
+Automatic completion has an append-only persistence boundary. Generation reads
+a non-hydrating snapshot and does not persist intermediate or final generated
+documents on its own. The append transaction rereads current workspace/version
+state, validates identities and links, and adds only missing volume skeletons,
+beats, chapter routes and empty execution rows. Saved chapter titles, task
+contracts, prose and version-only fields remain authoritative. A stale or
+conflicting result must fail or be retried against fresh state; it cannot replace
+an existing plan to make the generated result fit.
+
+Keep this boundary separate from explicit manual volume editing and full chapter
+synchronization. Automatic route completion must not call the full synchronization
+path merely with `preserveContent`: preserving prose alone does not protect saved
+execution contracts. Failed generation or append must leave the earlier plan
+usable, and a no-progress loop must terminate with a retryable explanation.
+Returning fewer than the required minimum is not successful preparation: callers
+must receive an explicit failure when the saved plan cannot safely fill that gap.
+
+When a book has neither active planning rows nor an active version, preserve the
+existing legacy outline/arc/chapter projection as a read-only compatibility path.
+Its derived identities must be stable for the same raw source, and that source
+participates in the revision fence. Only the append transaction materializes
+the projected plan. Reading or automatic continuation cannot activate an unrelated
+draft version, reorder saved chapters, or invent missing story semantics.
+This projection follows the existing legacy parsing rules; it does not promise
+lossless reconstruction of arbitrary malformed outlines.
+
 ## Strategy input and output budgets
 
 The strategy context budget controls reference selection; it does not set the
