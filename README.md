@@ -332,16 +332,8 @@ are retained in [NOTICE](NOTICE).
 
 ## Latest update
 
-### 2026-10-21
+### 2026-10-29
 
-- Automatic chapter planning fills missing routes while preserving existing
-  chapter plans and prose, and checks that the next chapters form a continuous
-  range before writing continues.
-- Chapter editing keeps device-local recovery copies of unfinished prose and
-  offers restore or discard after navigation or refresh. New typing survives
-  save acknowledgements, and changed saved text still requires comparison.
-- AI book setup accepts unambiguous genre and story-mode names in its
-  recommendations, reducing avoidable retries while rejecting conflicting
-  choices.
+- Chapter planning review reads scene plans and reader-experience goals together, helping avoid unnecessary repairs caused by list formatting, natural-language hooks, or a chapter turn echoed in its scenes. Missing or invalid planning details remain visible for review.
 
 [Full update history](docs/releases/release-notes.md).

@@ -3,6 +3,7 @@ const assert = require("node:assert/strict");
 
 const {
   ChapterScenePlanNormalizationError,
+  parseChapterScenePlan,
 } = require("../../shared/dist/types/chapterLengthControl.js");
 
 const {
@@ -282,6 +283,65 @@ test("chapter task sheet quality service passes usable semantic assessments", as
 });
 
 test("chapter task sheet quality prompt is registered as a product prompt asset", () => {
-  const registered = getRegisteredPromptAsset("novel.volume.chapter_task_sheet_quality", "v2");
+  const registered = getRegisteredPromptAsset("novel.volume.chapter_task_sheet_quality", "v3");
   assert.equal(registered, chapterTaskSheetQualityPrompt);
+});
+
+function renderQualityCandidate(candidate) {
+  const messages = chapterTaskSheetQualityPrompt.render({ candidate, mode: "full_book_autopilot" });
+  const content = String(messages[1].content);
+  return JSON.parse(content.slice(content.indexOf("{")));
+}
+
+test("quality review preserves structured obligations and the writer's scene plan", () => {
+  const source = JSON.parse(buildSceneCards());
+  source.readerExperience = {
+    readerQuestion: "谁在转移证据？",
+    keyTurn: "主角拿到移交记录。",
+    endingHook: "签名为什么属于失踪的同伴？",
+    inheritedHookResponsibilities: ["追查缺失的签名", "保留同伴的去向悬念"],
+  };
+  source.scenes[1].turn = source.readerExperience.keyTurn;
+  source.scenes[0].mustAdvance = ["保留字面分隔符 | 和换行\n信息", "查明交接时间"];
+  const candidate = buildCandidate({ sceneCards: JSON.stringify(source), payoffRefs: ["hook-a", "hook-b"] });
+  const rendered = renderQualityCandidate(candidate);
+  assert.deepEqual(rendered.scenePlan, parseChapterScenePlan(candidate.sceneCards, { targetWordCount: candidate.targetWordCount }));
+  assert.deepEqual(rendered.payoffRefs, candidate.payoffRefs);
+  assert.deepEqual(rendered.scenePlan.scenes[0].mustAdvance, source.scenes[0].mustAdvance);
+  assert.deepEqual(rendered.scenePlan.readerExperience.inheritedHookResponsibilities, source.readerExperience.inheritedHookResponsibilities);
+  assert.equal(rendered.scenePlan.readerExperience.endingHook, source.readerExperience.endingHook);
+  assert.equal(rendered.sceneCardsRaw, candidate.sceneCards);
+});
+
+test("quality review handles legacy array plans without inventing reader evidence", () => {
+  const candidate = buildCandidate({ sceneCards: JSON.stringify(JSON.parse(buildSceneCards()).scenes) });
+  const rendered = renderQualityCandidate(candidate);
+  assert.equal(rendered.scenePlan.scenes.length, 3);
+  assert.equal(rendered.scenePlan.readerExperience.readerQuestion, "");
+  assert.equal(rendered.scenePlan.scenes[0].resistance, "");
+  assert.equal(rendered.sceneCardsRaw, candidate.sceneCards);
+});
+
+test("quality review retains source fields discarded by scene normalization", () => {
+  const source = JSON.parse(buildSceneCards());
+  source.readerExperience = { readerQuestion: "保留原始问题", rewardLevel: "invalid" };
+  source.scenes.push({ title: "缺失执行信息的场景" });
+  const candidate = buildCandidate({ sceneCards: JSON.stringify(source) });
+  const rendered = renderQualityCandidate(candidate);
+  assert.equal(rendered.scenePlan.scenes.length, 3);
+  assert.equal(rendered.scenePlan.readerExperience.readerQuestion, "");
+  assert.equal(rendered.sceneCardsRaw, candidate.sceneCards);
+});
+
+test("invalid scene JSON stays inspectable and never reaches semantic assessment", async () => {
+  const candidate = buildCandidate({ sceneCards: "{broken scene JSON" });
+  const rendered = renderQualityCandidate(candidate);
+  assert.equal(rendered.scenePlan, null);
+  assert.equal(rendered.sceneCardsRaw, candidate.sceneCards);
+  let calls = 0;
+  const service = new ChapterTaskSheetQualityGateService(async () => { calls += 1; throw new Error("unexpected semantic call"); });
+  const result = await service.evaluate(candidate, { mode: "full_book_autopilot" });
+  assert.equal(calls, 0);
+  assert.equal(result.canEnterExecution, false);
+  assert.ok(result.issues.some((issue) => issue.id === "invalid_scene_cards"));
 });

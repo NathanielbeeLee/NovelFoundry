@@ -6,6 +6,10 @@ below; their source evidence is retained in local maintainer archives.
 
 ## History
 
+### 2026-10-29
+
+- Chapter planning review reads scene plans and reader-experience goals together, helping avoid unnecessary repairs caused by list formatting, natural-language hooks, or a chapter turn echoed in its scenes. Missing or invalid planning details remain visible for review.
+
 ### 2026-10-21
 
 - Automatic chapter planning fills missing routes while preserving existing

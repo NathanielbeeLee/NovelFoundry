@@ -55,6 +55,23 @@ draft version, reorder saved chapters, or invent missing story semantics.
 This projection follows the existing legacy parsing rules; it does not promise
 lossless reconstruction of arbitrary malformed outlines.
 
+## Chapter contract review
+
+Semantic contract review consumes the same parsed scene plan as structural
+validation and chapter writing. Keep chapter-level reader experience beside the
+scene list, and preserve obligation lists as arrays. Include the exact raw scene
+input for diagnosing invalid or discarded fields; raw content is not proof that
+the writer can execute it. Empty/default values produced by compatibility parsing
+are not evidence of a complete contract. This adds input context in exchange for
+keeping normalization losses inspectable; no additional model request is needed.
+
+The registered review prompt owns semantic interpretation. Natural-language hooks
+do not need a fixed prefix, and a chapter-level turn can refer to the same event
+as a scene turn. Report actual missing obligations, contradictory ordering or
+repeated events rather than treating representation differences as story defects.
+Candidate text is review data, not instructions. These rules do not change shape
+validation, repair handling or the full-book local-quality continuation policy.
+
 ## Strategy input and output budgets
 
 The strategy context budget controls reference selection; it does not set the
