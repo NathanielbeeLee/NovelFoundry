@@ -17,6 +17,7 @@ import { toast } from "@/components/ui/toast";
 import { useLLMStore } from "@/store/llmStore";
 import ChapterEditorDirectorPanel from "./ChapterEditorDirectorPanel";
 import ChapterEditorSidebar from "./ChapterEditorSidebar";
+import ChapterSyncDiagnosticsPanel from "./syncDiagnostics/ChapterSyncDiagnosticsPanel";
 import ChapterEditorLayout, { type ChapterEditorPanel } from "./ChapterEditorLayout";
 import ChapterTextEditor from "./ChapterTextEditor";
 import { useCandidateConsequences } from "./consequences/useCandidateConsequences";
@@ -173,6 +174,7 @@ export default function ChapterEditorShell(props: ChapterEditorShellProps) {
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: queryKeys.novels.detail(novelId) }),
       queryClient.invalidateQueries({ queryKey: queryKeys.novels.chapterEditorWorkspace(novelId, chapter?.id ?? "none") }),
+      queryClient.invalidateQueries({ queryKey: queryKeys.novels.chapterSyncDiagnostics(novelId, chapter?.id ?? "none") }),
       queryClient.invalidateQueries({ queryKey: queryKeys.novels.snapshots(novelId) }),
       chapter?.id
         ? queryClient.invalidateQueries({ queryKey: queryKeys.novels.chapterPlan(novelId, chapter.id) })
@@ -517,6 +519,14 @@ export default function ChapterEditorShell(props: ChapterEditorShellProps) {
           }
         }}
         context={<ChapterEditorSidebar
+          syncDiagnostics={<ChapterSyncDiagnosticsPanel
+            novelId={novelId}
+            chapterId={chapter.id}
+            chapterUpdatedAt={chapter.updatedAt}
+            isDirty={isDirty}
+            hasSaveConflict={Boolean(saveConflict)}
+            isSaving={saveMutation.isPending || acceptMutation.isPending}
+          />}
           workspace={workspace}
           workspaceStatus={workspaceStatus}
           selectedDiagnosticId={selectedDiagnosticId}

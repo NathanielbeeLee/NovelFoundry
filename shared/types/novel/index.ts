@@ -102,3 +102,4 @@ export * from "./state.js";
 export * from "./storyFacts.js";
 
 export type { ChapterContentWritePrecondition, ChapterSaveConflict } from "./chapterSave.js";
+export type { ChapterSyncDiagnosticKey, ChapterSyncDiagnosticStatus, ChapterSyncDiagnosticItem, ChapterSyncDiagnosticsResponse } from "./editor/syncDiagnostics.js";

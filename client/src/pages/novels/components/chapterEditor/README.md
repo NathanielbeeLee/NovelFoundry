@@ -145,3 +145,19 @@ Receipts last at most 15 minutes on one server instance and can be evicted or
 lost on restart/worker change. The resulting 409 preserves local content and
 candidate selection, with reassessment available. UI acceptance belongs to the
 user; no browser/visual check is required by this module contract.
+
+## Saved chapter synchronization diagnostics
+
+`syncDiagnostics/` reads a separate GET endpoint in the chapter information panel.
+It does not depend on AI workspace analysis, trigger extraction, or offer repair.
+The five rows describe saved summary, character/story artifacts, timeline, chapter
+retrieval and summary retrieval. Status labels preserve unknown, partial, failed,
+pending and outdated evidence rather than collapsing them into a success flag.
+
+Queries bind novel, chapter and loaded `updatedAt`, use cancellable reads, and
+refresh on mount. Save and candidate adoption invalidate this query alongside the
+chapter. Saving, unresolved save conflicts, fetching, failed reads, source changes during
+a read, and a loaded chapter version mismatch hide cached success. Unsaved edits have an explicit
+exclusion notice. Refresh also reloads chapter detail through the existing draft
+reconciliation rules; it never overwrites dirty editor text. Results show their
+read time and remain a snapshot until refresh, not a live worker health monitor.

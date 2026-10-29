@@ -198,3 +198,39 @@ Preview reviews do not replace reports for the saved manuscript. Saving reports
 locks the reviewed source in the same transaction; failed AI review remains an
 error rather than a synthetic clean score. Automatic chapter acceptance retains
 its own contract and local-quality-debt continuation rule.
+
+## Saved-source synchronization diagnostics
+
+The chapter information panel reads the production-owned synchronization
+projection independently of AI revision analysis. It reports summary,
+character/story artifacts, timeline, chapter retrieval and summary retrieval
+against the saved chapter. Local unsaved text is excluded. A diagnostic request
+never invokes AI, queues work, retries a checkpoint, writes canon or changes the
+director's continuation decision.
+
+A successful historical task is not sufficient evidence of current completion.
+Summary and artifact checks use the artifact owner's source identity and
+freshness contract; timeline checks use the timeline owner's distinct checkpoint
+identity and source metadata. Stable and degraded timeline results remain
+separate. Missing evidence stays unknown, and expired running artifact/timeline
+checkpoints do not imply that a worker is still active. These observations do
+not create a global quality gate.
+
+Retrieval completion requires matching local chunk metadata. A completed index
+job can have no chunks; its queued source revision is not proof of the source
+actually indexed. The projection checks the two chapter owners only and does not
+probe the external vector service or certify book-wide retrieval health. Pending
+and failed jobs remain visible for their own source revision. Bounded or missing
+evidence cannot produce a completion claim.
+
+The read uses a consistent database snapshot and rechecks chapter/summary source
+identity before responding. Concurrent source changes return unconfirmed results.
+The client scopes the query to novel, chapter and loaded save time, hides cached
+results during saves/refreshes or after failed reads, and requires a fresh match
+when the loaded version changes. The displayed read time identifies a snapshot;
+refresh rereads evidence without repairing it. UI acceptance remains separate
+from the offline projection and rendering checks.
+
+Implementation contracts and limits are owned by the
+[synchronization diagnostics module](../../../server/src/modules/novel/production/syncDiagnostics/README.md)
+and [chapter editor](../../../client/src/pages/novels/components/chapterEditor/README.md).

@@ -1,7 +1,9 @@
 import type { ChapterEditorDiagnosticCard, ChapterEditorWorkspaceResponse } from "@novelfoundry/shared/types/novel";
 import { Button } from "@/components/ui/button";
+import type { ReactNode } from "react";
 
 interface ChapterEditorSidebarProps {
+  syncDiagnostics?: ReactNode;
   workspace: ChapterEditorWorkspaceResponse | null;
   workspaceStatus: "loading" | "ready" | "error";
   selectedDiagnosticId: string | null;
@@ -32,6 +34,7 @@ export default function ChapterEditorSidebar(props: ChapterEditorSidebarProps) {
   return (
     <div className="h-full min-h-0 overflow-hidden">
       <div className="flex h-full min-h-0 flex-col gap-4 overflow-y-auto pr-1">
+        {props.syncDiagnostics}
         <div className="shrink-0 rounded-3xl border border-border/70 bg-background p-4 shadow-sm">
           <div className="mb-3 flex items-center justify-between gap-3">
             <div className="text-sm font-medium text-foreground">宏观定位</div>

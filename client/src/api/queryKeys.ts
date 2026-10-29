@@ -27,6 +27,7 @@ export const queryKeys = {
     chapterPlan: (id: string, chapterId: string) => ["novels", "chapter-plan", id, chapterId] as const,
     chapterAuditReports: (id: string, chapterId: string) => ["novels", "chapter-audit-reports", id, chapterId] as const,
     chapterEditorWorkspace: (id: string, chapterId: string) => ["novels", "chapter-editor-workspace", id, chapterId] as const,
+    chapterSyncDiagnostics: (id: string, chapterId: string) => ["novels", "chapter-sync-diagnostics", id, chapterId] as const,
     storylineVersions: (id: string) => ["novels", "storyline-versions", id] as const,
     volumeWorkspace: (id: string) => ["novels", "volume-workspace", id] as const,
     volumeVersions: (id: string) => ["novels", "volume-versions", id] as const,

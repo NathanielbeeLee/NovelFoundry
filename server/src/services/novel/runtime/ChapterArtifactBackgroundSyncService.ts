@@ -12,6 +12,7 @@ import type {
 } from "../novelCoreShared";
 import type { ContentProvenance } from "@novelfoundry/shared/types/canonicalState";
 import { buildContentHash, ChapterArtifactDeltaService, StaleChapterSourceError } from "../artifacts";
+import { SOURCE_FRESHNESS_VERSION, ARTIFACT_SYNC_RUNNING_STALE_MS } from "../artifacts/sourcePolicy";
 
 interface ChapterBackgroundSyncContext {
   chapterId: string;
@@ -30,15 +31,12 @@ interface ChapterArtifactBackgroundSyncOptions {
 
 type ArtifactSyncClaimStatus = "claimed" | "already_done" | "running";
 
-const SOURCE_FRESHNESS_VERSION = 1;
-
 function hasSourceFreshnessVersion(metadataJson: string | null | undefined): boolean {
   try { return JSON.parse(metadataJson ?? "{}").sourceFreshnessVersion === SOURCE_FRESHNESS_VERSION; } catch { return false; }
 }
 
 const DEFAULT_ARTIFACT_SYNC_MODE: ArtifactSyncMode = "adaptive";
 const DEFERRED_SYNC_DELAY_MS = 5000;
-const ARTIFACT_SYNC_RUNNING_STALE_MS = 15 * 60 * 1000;
 
 export class ChapterArtifactBackgroundSyncService {
   private artifactDeltaService: ChapterArtifactDeltaService | null = null;

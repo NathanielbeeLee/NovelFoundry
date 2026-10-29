@@ -1,5 +1,5 @@
 import { ragServices } from "../../../rag";
-import { buildSummarySourceHash } from "../../../rag/indexing/sourceIdentity";
+import { buildChapterProjectionSourceRevision } from "../../../rag/indexing/sourceIdentity";
 import { artifactPrisma, currentChapterSource } from "./ChapterSourceTransaction";
 
 /** Index work is an outbox in the same source-locked transaction as its projection. */
@@ -10,7 +10,9 @@ export async function queueChapterProjectionIndexes(): Promise<void> {
     artifactPrisma.chapter.findFirst({ where: { id: source.chapterId, novelId: source.novelId }, select: { updatedAt: true } }),
     artifactPrisma.chapterSummary.findUnique({ where: { chapterId: source.chapterId } }),
   ]);
-  const sourceRevision = `${source.chapterId}:${source.contentHash}:${chapter?.updatedAt.toISOString()}:${summary ? buildSummarySourceHash(summary) : "no-summary"}`;
+  const sourceRevision = buildChapterProjectionSourceRevision({
+    chapterId: source.chapterId, contentHash: source.contentHash, chapterUpdatedAt: chapter?.updatedAt, summary,
+  });
   for (const [ownerType, ownerId] of [
     ["chapter", source.chapterId], ["chapter_summary", source.chapterId], ["novel", source.novelId],
   ] as const) {

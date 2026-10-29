@@ -5,6 +5,7 @@ import { AppError } from "../../../../middleware/errorHandler";
 import { validate } from "../../../../middleware/validate";
 import type { NovelApplicationServices } from "../../../../services/novel/application/NovelApplicationContracts";
 import { chapterEditorConsequenceRequestSchema, chapterEditorConsequenceAdoptRequestSchema } from "@novelfoundry/shared/types/novel";
+import { ChapterSyncDiagnosticsService } from "../syncDiagnostics";
 
 interface RegisterNovelChapterEditorRoutesInput {
   router: Router;
@@ -22,6 +23,7 @@ interface RegisterNovelChapterEditorRoutesInput {
 }
 
 export function registerNovelChapterEditorRoutes(input: RegisterNovelChapterEditorRoutesInput): void {
+  const syncDiagnostics = new ChapterSyncDiagnosticsService();
   const {
     router,
     novelService,
@@ -30,6 +32,14 @@ export function registerNovelChapterEditorRoutes(input: RegisterNovelChapterEdit
     aiRevisionPreviewSchema,
     forwardBusinessError,
   } = input;
+
+  router.get("/:id/chapters/:chapterId/sync-diagnostics", validate({ params: chapterParamsSchema }), async (req, res, next) => {
+    try {
+      const { id, chapterId } = req.params as z.infer<typeof chapterParamsSchema>;
+      const data = await syncDiagnostics.get(id, chapterId);
+      res.json({ success: true, data } satisfies ApiResponse<typeof data>);
+    } catch (error) { next(error); }
+  });
 
   router.post("/:id/chapters/:chapterId/editor/consequences", validate({ params: chapterParamsSchema, body: chapterEditorConsequenceRequestSchema }), async (req, res, next) => {
     try {

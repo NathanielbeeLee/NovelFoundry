@@ -16,8 +16,18 @@ import type {
   ChapterEditorConsequenceRequest,
   ChapterEditorConsequenceReport,
   ChapterEditorConsequenceAdoptRequest,
+  ChapterSyncDiagnosticsResponse,
 } from "@novelfoundry/shared/types/novel";
 import { apiClient } from "../client";
+
+export async function getChapterSyncDiagnostics(novelId: string, chapterId: string, signal?: AbortSignal) {
+  const { data } = await apiClient.get<ApiResponse<ChapterSyncDiagnosticsResponse>>(
+    `/novels/${novelId}/chapters/${chapterId}/sync-diagnostics`,
+    { signal },
+  );
+  if (!data.success || !data.data) throw new Error("章节同步情况暂时无法读取。");
+  return data.data;
+}
 
 export async function previewChapterConsequences(novelId: string, chapterId: string, payload: ChapterEditorConsequenceRequest) {
   const { data } = await apiClient.post<ApiResponse<ChapterEditorConsequenceReport>>(`/novels/${novelId}/chapters/${chapterId}/editor/consequences`, payload, { silentErrorStatuses: [409] });
