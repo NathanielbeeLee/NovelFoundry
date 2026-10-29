@@ -1,5 +1,11 @@
 import type { Descendant, Value } from "platejs";
 import type { ChapterEditorOperation } from "@novelfoundry/shared/types/novel";
+import {
+  normalizeChapterEditorText,
+  splitChapterEditorParagraphs,
+  findChapterEditorParagraphRange,
+  chapterEditorParagraphWindow,
+} from "@novelfoundry/shared/types/novel";
 import type {
   ChapterEditorRequestBuilderInput,
   ChapterEditorSelectionRange,
@@ -15,50 +21,21 @@ export const CHAPTER_EDITOR_OPERATION_LABELS: Record<ChapterEditorOperation, str
   custom: "自定义指令",
 };
 
-export function normalizeEditorText(text: string): string {
-  return text.replace(/\r\n/g, "\n");
-}
+export const normalizeEditorText = normalizeChapterEditorText;
+export const normalizeChapterContent = normalizeChapterEditorText;
 
 export function countEditorWords(text: string): number {
   return normalizeEditorText(text).replace(/\s+/g, "").length;
 }
 
-function normalizeParagraphText(text: string): string {
-  return normalizeEditorText(text)
-    .split("\n")
-    .map((line) => line.trim())
-    .filter((line) => line.length > 0)
-    .join(" ")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-function splitParagraphs(text: string): string[] {
-  const normalized = normalizeEditorText(text).trim();
-  if (!normalized) {
-    return [];
-  }
-
-  return normalized
-    .split(/\n{2,}/)
-    .map((paragraph) => normalizeParagraphText(paragraph))
-    .filter((paragraph) => paragraph.length > 0);
-}
-
-export function normalizeChapterContent(text: string): string {
-  const paragraphs = splitParagraphs(text);
-  return paragraphs.length > 0 ? paragraphs.join("\n\n") : "";
-}
-
 export function toPlateValue(text: string): Value {
-  const paragraphs = splitParagraphs(text).map((line) => ({
+  return splitChapterEditorParagraphs(text).map((paragraph) => ({
     type: "p",
-    children: [{ text: line }],
+    children: [{ text: paragraph.text }],
   }));
-  return paragraphs.length > 0 ? paragraphs : [{ type: "p", children: [{ text: "" }] }];
 }
 
-function nodeToText(node: Descendant): string {
+export function nodeToText(node: Descendant): string {
   if ("text" in node && typeof node.text === "string") {
     return node.text;
   }
@@ -69,12 +46,19 @@ function nodeToText(node: Descendant): string {
 }
 
 export function toPlainText(value: Value): string {
-  const paragraphs = (value as Descendant[])
-    .map((node) => nodeToText(node))
-    .map((paragraph) => normalizeParagraphText(paragraph))
-    .filter((paragraph) => paragraph.length > 0);
+  return normalizeEditorText((value as Descendant[]).map(nodeToText).join("\n"));
+}
 
-  return paragraphs.length > 0 ? paragraphs.join("\n\n") : "";
+export function fragmentToPlainText(fragment: Descendant[], isBlock: (node: Descendant) => boolean): string {
+  let content = "";
+  let previousWasBlock = false;
+  for (const [index, node] of fragment.entries()) {
+    const block = isBlock(node);
+    if (index > 0 && (block || previousWasBlock)) content += "\n";
+    content += nodeToText(node);
+    previousWasBlock = block;
+  }
+  return normalizeEditorText(content);
 }
 
 type EditorPointLike = {
@@ -149,7 +133,7 @@ function getAbsoluteOffsetFromPoint(value: Value, point: EditorPointLike): numbe
 
   let total = 0;
   for (let index = 0; index < paragraphIndex; index += 1) {
-    total += normalizeParagraphText(nodeToText(nodes[index])).length + 2;
+    total += nodeToText(nodes[index]).length + 1;
   }
 
   const paragraph = nodes[paragraphIndex];
@@ -158,7 +142,8 @@ function getAbsoluteOffsetFromPoint(value: Value, point: EditorPointLike): numbe
     return null;
   }
 
-  return total + paragraphOffset;
+  const rawContent = (value as Descendant[]).map(nodeToText).join("\n");
+  return normalizeEditorText(rawContent.slice(0, total + paragraphOffset)).length;
 }
 
 export function buildSelectionRangeFromValue(
@@ -230,77 +215,14 @@ export function buildToolbarPosition(container: HTMLElement, range: Range): Sele
   };
 }
 
-type ParagraphWindow = {
-  beforeParagraphs: string[];
-  afterParagraphs: string[];
-};
-
-export function getParagraphWindow(content: string, selection: ChapterEditorSelectionRange): ParagraphWindow {
-  const paragraphs = splitParagraphs(content);
-  const paragraphRanges: Array<{ text: string; start: number; end: number }> = [];
-  let cursor = 0;
-
-  for (const text of paragraphs) {
-    const start = cursor;
-    const end = start + text.length;
-    paragraphRanges.push({
-      text,
-      start,
-      end,
-    });
-    cursor = end + 2;
-  }
-
-  if (paragraphRanges.length === 0) {
-    return { beforeParagraphs: [], afterParagraphs: [] };
-  }
-
-  const startIndex = paragraphRanges.findIndex((paragraph) => selection.from >= paragraph.start && selection.from <= paragraph.end);
-  const endIndex = paragraphRanges.findIndex((paragraph) => selection.to >= paragraph.start && selection.to <= paragraph.end);
-  const fallbackStartIndex = paragraphRanges.findIndex((paragraph) => paragraph.end >= selection.from);
-  const resolvedStart = startIndex >= 0 ? startIndex : fallbackStartIndex >= 0 ? fallbackStartIndex : 0;
-  const resolvedEnd = endIndex >= 0 ? endIndex : resolvedStart;
-
-  return {
-    beforeParagraphs: paragraphRanges.slice(Math.max(0, resolvedStart - 3), resolvedStart).map((paragraph) => paragraph.text),
-    afterParagraphs: paragraphRanges.slice(resolvedEnd + 1, resolvedEnd + 3).map((paragraph) => paragraph.text),
-  };
-}
+export const getParagraphWindow = chapterEditorParagraphWindow;
 
 export function applyCandidateToContent(content: string, selection: ChapterEditorSelectionRange, replacement: string): string {
   const normalized = normalizeEditorText(content);
   return `${normalized.slice(0, selection.from)}${replacement}${normalized.slice(selection.to)}`;
 }
 
-export function getParagraphIndicesForRange(content: string, selection: Pick<ChapterEditorSelectionRange, "from" | "to">) {
-  const paragraphs = splitParagraphs(content);
-  const paragraphRanges: Array<{ start: number; end: number }> = [];
-  let cursor = 0;
-
-  for (const text of paragraphs) {
-    const start = cursor;
-    const end = start + text.length;
-    paragraphRanges.push({ start, end });
-    cursor = end + 2;
-  }
-
-  if (paragraphRanges.length === 0) {
-    return null;
-  }
-
-  const startIndex = paragraphRanges.findIndex((paragraph) => selection.from >= paragraph.start && selection.from <= paragraph.end);
-  const endIndex = paragraphRanges.findIndex((paragraph) => selection.to >= paragraph.start && selection.to <= paragraph.end);
-  const resolvedStart = startIndex >= 0 ? startIndex : paragraphRanges.findIndex((paragraph) => paragraph.end >= selection.from);
-  const resolvedEnd = endIndex >= 0 ? endIndex : resolvedStart;
-  if (resolvedStart < 0 || resolvedEnd < 0) {
-    return null;
-  }
-
-  return {
-    startIndex: resolvedStart,
-    endIndex: resolvedEnd,
-  };
-}
+export const getParagraphIndicesForRange = findChapterEditorParagraphRange;
 
 export function buildAiRevisionRequest(input: ChapterEditorRequestBuilderInput) {
   const contentSnapshot = normalizeChapterContent(input.content);

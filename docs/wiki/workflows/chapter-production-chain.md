@@ -149,6 +149,22 @@ The editor instance belongs to the novel/chapter identity, not its query timesta
 A save acknowledges only submitted text. Later typing stays dirty through query
 refresh, failure and conflict. Switching chapters isolates late callbacks.
 
+### Manuscript text fidelity
+
+The chapter editor uses LF as its editing line ending and preserves all other
+manuscript whitespace, including full-width indentation, repeated spaces, single
+line breaks, empty lines and trailing empty lines. One LF separates editor text
+blocks; shared serialization and half-open UTF-16 ranges define selection,
+paragraph context, diagnostic anchors and candidate replacement on both sides of
+the API. Display formatting must not rewrite the text being saved.
+
+The raw persisted source remains a separate compare-and-set token, including
+CRLF, null and empty distinctions. Loading an old manuscript or recovery copy
+never bulk-rewrites stored prose. Ordinary save is explicit; acknowledgements,
+query refresh and recovery retain the existing revision ownership. A candidate's
+text and the selected source keep their whitespace through validation and diff
+rendering; checking that prose is nonblank must not trim the returned value.
+
 ### Local draft recovery
 
 The editor keeps a device-local recovery copy of unfinished prose, separate from

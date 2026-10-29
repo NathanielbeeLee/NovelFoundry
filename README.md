@@ -334,6 +334,7 @@ are retained in [NOTICE](NOTICE).
 
 ### 2026-10-29
 
+- Chapter editing preserves indentation, repeated spaces and blank lines through selection, AI revision, saving and device recovery.
 - Chapter planning review reads scene plans and reader-experience goals together, helping avoid unnecessary repairs caused by list formatting, natural-language hooks, or a chapter turn echoed in its scenes. Missing or invalid planning details remain visible for review.
 
 [Full update history](docs/releases/release-notes.md).

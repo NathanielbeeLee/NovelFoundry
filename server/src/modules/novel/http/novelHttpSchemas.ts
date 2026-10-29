@@ -475,7 +475,7 @@ export const rewritePreviewSchema = z.object({
   targetRange: z.object({
     from: z.number().int().min(0),
     to: z.number().int().min(1),
-    text: z.string().trim().min(1),
+    text: z.string().refine((value) => value.trim().length > 0, "选中文本不能为空。"),
   }).refine((value) => value.to > value.from, {
     message: "选区结束位置必须大于开始位置。",
     path: ["to"],
@@ -511,7 +511,7 @@ export const aiRevisionPreviewSchema = z.object({
   selection: z.object({
     from: z.number().int().min(0),
     to: z.number().int().min(1),
-    text: z.string().trim().min(1),
+    text: z.string().refine((value) => value.trim().length > 0, "选中文本不能为空。"),
   }).refine((value) => value.to > value.from, {
     message: "选区结束位置必须大于开始位置。",
     path: ["to"],

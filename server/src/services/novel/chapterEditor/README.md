@@ -5,6 +5,16 @@ diagnosis. `NovelChapterEditorService` produces unsaved rewrite candidates.
 `consequences/` owns optional assessment of one active candidate; it does not
 own prose generation, canonical state, director execution or artifact repair.
 
+Editor text, paragraph numbering and selection windows use the shared
+`novel/editor/text` contract. Only CRLF is normalized to LF; indentation, repeated
+spaces and empty/trailing paragraphs survive. An LF separates each numbered
+paragraph, and ranges are half-open UTF-16 offsets into the same text. HTTP
+selection validation and the registered candidate schema may reject whitespace-only
+values but must not trim valid manuscript content. Candidate text and diff chunks
+use the same LF representation. An explicitly empty local snapshot never falls
+back to persisted prose. Exact raw CAS and consequence identity stay separate from
+this editable text view; no saved chapter or recovery copy is migrated implicitly.
+
 ## Candidate consequence assessment
 
 - `domain/` validates exact selection bytes, hashes and evidence references.

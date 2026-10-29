@@ -443,7 +443,7 @@ export const promptAssetLoaderEntries: PromptAssetLoaderEntry[] = [
     load: () => require("../prompts/novel/chapterEditor/consequences.prompts").chapterEditorConsequencesPrompt as UnknownPromptAsset,
   },
   {
-    key: "novel.chapter_editor.rewrite_candidates@v2",
+    key: "novel.chapter_editor.rewrite_candidates@v3",
     load: () => require("../prompts/novel/chapterEditor/rewriteCandidates.prompts").chapterEditorRewriteCandidatesPrompt as UnknownPromptAsset,
   },
   {

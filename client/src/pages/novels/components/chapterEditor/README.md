@@ -15,6 +15,29 @@ Failure keeps the local text available for retry. Controlled echoes of local
 keystrokes must retain the live text editor, including trailing spaces and empty
 paragraphs, instead of rebuilding its document and undo stack.
 
+## Manuscript text and selections
+
+The editor uses the shared `novel/editor/text` contract: CRLF becomes LF in the
+editable view; every LF separates a paragraph node, including empty and trailing
+nodes. Other whitespace, full-width indentation and solitary CR characters remain
+text. Enter and Shift+Enter insert one LF; multiple newlines remain multiple empty
+blocks. Text and fragment insertion follow the same mapping, including inline
+leaves and multiline paste. Paragraph numbers and half-open UTF-16 selections use
+that exact view on both client and server. Display spacing must not add manuscript
+bytes, and preview rendering must not trim them.
+
+The exact persisted source remains separate for compare-and-save. Opening a book
+does not rewrite it. Old device recovery copies are complete text, not serialized
+editor nodes, and must not be migrated or collapsed. A candidate's leading/trailing
+whitespace is part of its replacement and diff; HTTP validation rejects empty
+semantic selections without trimming valid quoted text. Empty unsaved chapters
+must not fall back to saved prose when requesting AI revision.
+
+Formatting removed by earlier explicit saves cannot be reconstructed from this
+contract. Existing snapshots or recovery copies remain the recovery source. No
+bulk chapter migration is performed. Browser rendering/interaction acceptance is
+user-owned; headless Plate fixtures cover insertion and text/selection contracts.
+
 ## Concurrent saves
 
 Manual prose writes and AI candidate acceptance send `expectedContent` from the

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { Value } from "platejs";
-import { ParagraphPlugin, Plate, PlateContent, usePlateEditor } from "platejs/react";
+import { Plate, PlateContent, usePlateEditor } from "platejs/react";
+import { ManuscriptParagraphPlugin } from "./infrastructure/manuscriptParagraphPlugin";
 import type { ChapterEditorDiffChunk } from "@novelfoundry/shared/types/novel";
 import type { ChapterEditorSelectionRange, SelectionToolbarPosition } from "./chapterEditorTypes";
 import {
@@ -47,22 +48,15 @@ interface ChapterTextEditorProps {
   focusRange?: Pick<ChapterEditorSelectionRange, "from" | "to"> | null;
 }
 
-const EDITOR_BODY_CLASS_NAME = "prose prose-sm max-w-none min-w-0 overflow-hidden break-words text-[15px] leading-8 dark:prose-invert [&_code]:break-all [&_pre]:max-w-full [&_pre]:overflow-x-auto [&_pre]:whitespace-pre-wrap [&_pre]:break-words";
+const EDITOR_BODY_CLASS_NAME = "whitespace-pre-wrap [&_p]:m-0 [&_p]:min-h-8 prose prose-sm max-w-none min-w-0 overflow-hidden break-words text-[15px] leading-8 dark:prose-invert [&_code]:break-all [&_pre]:max-w-full [&_pre]:overflow-x-auto [&_pre]:whitespace-pre-wrap [&_pre]:break-words";
 const INLINE_PREVIEW_BODY_CLASS_NAME = `${EDITOR_BODY_CLASS_NAME} whitespace-pre-wrap`;
-const READONLY_BODY_CLASS_NAME = "min-w-0 break-words text-[15px] leading-8";
+const READONLY_BODY_CLASS_NAME = "whitespace-pre-wrap min-w-0 break-words text-[15px] leading-8";
 const SURFACE_INNER_PADDING_CLASS_NAME = "pl-14";
-
-function splitDisplayParagraphs(text: string): string[] {
-  const normalized = normalizeChapterContent(text);
-  if (!normalized) {
-    return [];
-  }
-  return normalized.split(/\n{2,}/).map((paragraph) => paragraph.trim()).filter(Boolean);
-}
 
 function TextBlock(props: { text: string; className?: string }) {
   const { text, className } = props;
-  const paragraphs = splitDisplayParagraphs(text);
+  if (text === "") return null;
+  const paragraphs = normalizeChapterContent(text).split("\n");
   if (paragraphs.length === 0) {
     return null;
   }
@@ -70,7 +64,7 @@ function TextBlock(props: { text: string; className?: string }) {
   return (
     <div className={`${READONLY_BODY_CLASS_NAME} ${className ?? ""}`.trim()}>
       {paragraphs.map((paragraph, index) => (
-        <p key={`${index}:${paragraph.slice(0, 16)}`} className="mb-6 last:mb-0">
+        <p key={`${index}:${paragraph.slice(0, 16)}`} className="m-0 min-h-8">
           {paragraph}
         </p>
       ))}
@@ -85,7 +79,7 @@ function getParagraphElements(surface: HTMLDivElement): HTMLElement[] {
     searchRoot.querySelectorAll<HTMLElement>('[data-slate-node="element"], p'),
   );
 
-  return candidates.filter((node) => node.textContent?.trim());
+  return candidates.filter((node) => !candidates.some((other) => other !== node && other.contains(node)));
 }
 
 function renderDiffChunk(chunk: ChapterEditorDiffChunk) {
@@ -171,7 +165,7 @@ export default function ChapterTextEditor(props: ChapterTextEditorProps) {
 
   const editor = usePlateEditor(
     {
-      plugins: [ParagraphPlugin],
+      plugins: [ManuscriptParagraphPlugin],
       value: toPlateValue(internalText),
     },
     [editorSeed],

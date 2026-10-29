@@ -1,6 +1,10 @@
+import {
+  normalizeChapterEditorText,
+  splitChapterEditorParagraphs,
+  chapterEditorParagraphWindow,
+} from "@novelfoundry/shared/types/novel";
 import type {
   ChapterEditorAiRevisionIntent,
-  ChapterEditorContextWindow,
   ChapterEditorMacroContext,
   ChapterEditorOperation,
   ChapterEditorTargetRange,
@@ -43,71 +47,13 @@ export interface ChapterEditorVolumeLocation {
   volumePhaseLabel: string;
 }
 
-export function normalizeEditorText(text: string | null | undefined): string {
-  return (text ?? "").replace(/\r\n/g, "\n");
-}
-
-function normalizeParagraphText(text: string): string {
-  return normalizeEditorText(text)
-    .split("\n")
-    .map((line) => line.trim())
-    .filter((line) => line.length > 0)
-    .join(" ")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-export function normalizeChapterContent(text: string | null | undefined): string {
-  const paragraphs = normalizeEditorText(text)
-    .split(/\n{2,}/)
-    .map((paragraph) => normalizeParagraphText(paragraph))
-    .filter(Boolean);
-  return paragraphs.join("\n\n");
-}
+export const normalizeEditorText = normalizeChapterEditorText;
+export const normalizeChapterContent = normalizeChapterEditorText;
+export const splitParagraphsWithRanges = splitChapterEditorParagraphs;
+export const buildParagraphWindow = chapterEditorParagraphWindow;
 
 export function countEditorWords(text: string | null | undefined): number {
   return normalizeEditorText(text).replace(/\s+/g, "").length;
-}
-
-export function splitParagraphsWithRanges(text: string | null | undefined): ChapterEditorParagraph[] {
-  const normalized = normalizeChapterContent(text);
-  if (!normalized) {
-    return [];
-  }
-
-  const paragraphs = normalized.split(/\n{2,}/);
-  let cursor = 0;
-  return paragraphs.map((paragraph, index) => {
-    const from = cursor;
-    const to = from + paragraph.length;
-    cursor = to + 2;
-    return {
-      index: index + 1,
-      text: paragraph,
-      from,
-      to,
-    };
-  });
-}
-
-export function buildParagraphWindow(
-  content: string,
-  range: ChapterEditorTargetRange,
-): ChapterEditorContextWindow {
-  const paragraphs = splitParagraphsWithRanges(content);
-  if (paragraphs.length === 0) {
-    return { beforeParagraphs: [], afterParagraphs: [] };
-  }
-
-  const startIndex = paragraphs.findIndex((paragraph) => range.from >= paragraph.from && range.from <= paragraph.to);
-  const endIndex = paragraphs.findIndex((paragraph) => range.to >= paragraph.from && range.to <= paragraph.to);
-  const resolvedStart = startIndex >= 0 ? startIndex : 0;
-  const resolvedEnd = endIndex >= 0 ? endIndex : resolvedStart;
-
-  return {
-    beforeParagraphs: paragraphs.slice(Math.max(0, resolvedStart - 3), resolvedStart).map((paragraph) => paragraph.text),
-    afterParagraphs: paragraphs.slice(resolvedEnd + 1, resolvedEnd + 3).map((paragraph) => paragraph.text),
-  };
 }
 
 export function createTargetRangeForWholeChapter(content: string): ChapterEditorTargetRange {

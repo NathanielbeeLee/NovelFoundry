@@ -2,7 +2,7 @@ import { z } from "zod";
 
 export const chapterEditorRewriteCandidateSchema = z.object({
   label: z.string().trim().min(1).max(24),
-  content: z.string().trim().min(1),
+  content: z.string().refine((value) => value.trim().length > 0, "Candidate prose must contain non-whitespace text."),
   summary: z.string().trim().min(1).max(160).optional(),
   rationale: z.string().trim().min(1).max(220).optional(),
   riskNotes: z.array(z.string().trim().min(1).max(120)).max(4).optional(),

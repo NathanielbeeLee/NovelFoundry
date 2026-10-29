@@ -57,8 +57,8 @@ function dedupeCandidates(candidates: ChapterEditorCandidate[]): ChapterEditorCa
   const seen = new Set<string>();
   const deduped: ChapterEditorCandidate[] = [];
   for (const candidate of candidates) {
-    const key = candidate.content.trim();
-    if (!key || seen.has(key)) {
+    const key = candidate.content;
+    if (!key.trim() || seen.has(key)) {
       continue;
     }
     seen.add(key);
@@ -120,7 +120,7 @@ export class NovelChapterEditorService {
     input: ChapterEditorAiRevisionRequest,
   ): Promise<ChapterEditorAiRevisionResponse> {
     const context = await this.workspaceService.loadContext(novelId, chapterId);
-    const content = normalizeChapterContent(input.contentSnapshot || context.chapter.content || "");
+    const content = normalizeChapterContent(input.contentSnapshot ?? context.chapter.content ?? "");
     if (!content.trim()) {
       throw new Error("当前章节正文为空，无法发起 AI 修正。");
     }
@@ -168,12 +168,12 @@ export class NovelChapterEditorService {
       result.output.candidates.slice(0, 3).map((candidate, index) => ({
         id: randomUUID(),
         label: candidate.label?.trim() || `方案 ${index + 1}`,
-        content: candidate.content.trim(),
+        content: normalizeEditorText(candidate.content),
         summary: candidate.summary?.trim() || null,
         rationale: candidate.rationale?.trim() || null,
         riskNotes: candidate.riskNotes?.filter((item) => item.trim().length > 0) ?? [],
         semanticTags: candidate.semanticTags?.filter((tag) => tag.trim().length > 0) ?? [],
-        diffChunks: buildChapterEditorDiffChunks(targetRange.text, candidate.content.trim()),
+        diffChunks: buildChapterEditorDiffChunks(targetRange.text, normalizeEditorText(candidate.content)),
       })),
     );
 

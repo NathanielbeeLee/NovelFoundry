@@ -96,6 +96,7 @@ export * from "./shelf.js";
 export * from "./production/pipeline.js";
 export * from "./modelRouting.js";
 export * from "./editor/contracts.js";
+export * from "./editor/text.js";
 export * from "./editor/consequence.js";
 export * from "./state.js";
 export * from "./storyFacts.js";

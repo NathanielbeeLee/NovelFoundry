@@ -7,6 +7,7 @@ const {
 } = require("../dist/services/novel/application/NovelApplicationServices.js");
 const { NovelChapterEditorService } = require("../dist/services/novel/chapterEditor/NovelChapterEditorService.js");
 const { ChapterEditorWorkspaceService } = require("../dist/services/novel/chapterEditor/ChapterEditorWorkspaceService.js");
+const { prisma } = require("../dist/db/prisma.js");
 
 function listen(server) {
   return new Promise((resolve) => {
@@ -406,6 +407,9 @@ test("ChapterEditorWorkspaceService maps diagnosis paragraphs into anchor ranges
 });
 
 test("GET workspace and POST ai-revision-preview routes return the new editor payloads", async () => {
+  const originalFindNovel = prisma.novel.findUnique;
+  // The route write guard reads creation mode before calling the mocked facade.
+  prisma.novel.findUnique = async () => ({ creationExperience: "professional" });
   const originalWorkspaceMethod = DefaultNovelApplicationServices.prototype.getChapterEditorWorkspace;
   const originalRevisionMethod = DefaultNovelApplicationServices.prototype.previewChapterAiRevision;
   DefaultNovelApplicationServices.prototype.getChapterEditorWorkspace = async () => ({
@@ -533,6 +537,7 @@ test("GET workspace and POST ai-revision-preview routes return the new editor pa
     assert.equal(revisionPayload.data.scope, "chapter");
     assert.equal(revisionPayload.data.candidates.length, 2);
   } finally {
+    prisma.novel.findUnique = originalFindNovel;
     DefaultNovelApplicationServices.prototype.getChapterEditorWorkspace = originalWorkspaceMethod;
     DefaultNovelApplicationServices.prototype.previewChapterAiRevision = originalRevisionMethod;
     await new Promise((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())));
