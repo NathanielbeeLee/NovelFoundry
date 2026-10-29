@@ -13,3 +13,4 @@ export { chapterExecutionObligationKindSchema, chapterExecutionObligationCoverag
 export type { ChapterExecutionObligationKind, ChapterExecutionMissingObligation, ChapterExecutionObligationCoverage, ChapterFailureClassification } from "./chapterRuntime/obligationSchemas.js";
 export { generationContextPackageSchema, chapterRuntimePackageSchema } from "./chapterRuntime/packageSchemas.js";
 export type { RuntimeCharacterResourceContext, GenerationContextPackage, ChapterRuntimePackage } from "./chapterRuntime/packageSchemas.js";
+export { resolvePlanParticipants } from "./chapterRuntime/identity/resolvePlanParticipants.js";

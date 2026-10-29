@@ -45,6 +45,7 @@ import {
   takeUnique,
   toListBlock,
 } from "./chapterLayeredContextShared";
+import { buildPlannedCastContext } from "./context/plannedCast";
 import { RUNTIME_PROMPT_BUDGET_PROFILES } from "./promptBudgetProfiles";
 import { buildChapterWriterContextBlocks } from "./context/chapterContextBlocks";
 import {
@@ -60,6 +61,8 @@ export {
   sanitizeWriterContextBlocks,
 } from "./context/chapterContextBlocks";
 export type { ChapterWriterBlockMode } from "./context/chapterContextBlocks";
+
+export { buildPlannedCastText } from "./context/plannedCast";
 
 export { resolveTargetWordRange } from "./chapterLayeredContextShared";
 
@@ -371,6 +374,7 @@ export function buildChapterWriteContext(input: {
     scenePlan,
     readerExperience,
     participants,
+    plannedCast: buildPlannedCastContext(input.contextPackage, participants),
     characterHardFacts,
     characterBehaviorGuides,
     activeRelationStages: dynamicCharacterGuidance.activeRelationStages,

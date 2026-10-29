@@ -51,6 +51,31 @@ overflow. This does not enlarge the model's actual input window. Investigate
 oversized contracts through rendered-input diagnostics and context ownership
 rather than silently removing constraints or introducing another memory store.
 
+## Required chapter cast
+
+The structured chapter plan owns required participants. Bind an explicit roster
+ID first, otherwise a unique exact name. Duplicate or unknown names remain visible
+as unresolved references; neither background ranking nor resource lookup may guess
+their identity. A chapter with no explicit plan keeps the existing bounded
+background fallback.
+
+Required identities do not compete with optional volume/background characters for
+a six-character cap. Their hard facts and scoped private knowledge remain complete
+through writing, review, repair and retrieval. Optional background stays bounded,
+and the write-context snapshot records omitted background IDs. Source-bound mind
+records must precede the target chapter; current/future or unknown-age records are
+not earlier knowledge. A source-less authored baseline keeps its existing meaning.
+Private beliefs, errors and intentions belong only to their named character and
+must not become objective facts or another character's knowledge.
+
+The optional planned-cast snapshot remains compatible with older snapshots.
+Render it inside the existing required, non-summarizable participant context block
+so metadata-driven preparation and existing advanced templates retain the same
+contract. Preserve required hard facts without another rendering/repair count cap.
+Retrieval puts the complete required names before optional mission text. These
+requirements may exceed soft budgets and cost more; they do not expand the model
+window or introduce a new global quality stop.
+
 ## Index and lifecycle rules
 
 A document version must be indexed before it is searchable. Archiving is

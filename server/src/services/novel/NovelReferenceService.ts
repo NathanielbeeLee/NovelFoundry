@@ -495,17 +495,19 @@ export function buildChapterRagQuery(input: ChapterRagQueryInput): string {
   for (const item of input.targetConflicts ?? []) {
     push(item);
   }
-  for (const name of (input.participantNames ?? []).slice(0, 6)) {
-    push(name);
-  }
 
   // If nothing beyond the novel title was collected, the runtime mission is
   // empty; fall back to the outline-based query to avoid an information-free
   // retrieval that only matches the book title.
-  if (terms.length <= 1) {
+  if (terms.length <= 1 && !(input.participantNames ?? []).length) {
     return getRagQueryForChapter(input.chapterOrder, input.novelTitle, input.structuredOutline ?? null);
   }
 
+  // Participant identity is mandatory; only optional mission prose uses the soft cap.
+  // Very large approved casts may exceed it, as required prompt constraints already do.
+  const names = [...new Set((input.participantNames ?? []).map((name) => name.trim()).filter(Boolean))];
+  const castQuery = names.join(" ");
   const query = terms.join(" ").trim();
-  return query.length > MAX_RAG_QUERY_CHARS ? query.slice(0, MAX_RAG_QUERY_CHARS).trim() : query;
+  const remaining = Math.max(0, MAX_RAG_QUERY_CHARS - castQuery.length - (castQuery ? 1 : 0));
+  return [castQuery, query.slice(0, remaining).trim()].filter(Boolean).join(" ");
 }

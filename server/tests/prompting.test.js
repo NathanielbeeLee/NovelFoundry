@@ -187,7 +187,7 @@ test("prompt registry exposes versioned planning assets", () => {
     promptKey(styleProfileExtractionPrompt),
     promptKey(styleProfileFromBookAnalysisPrompt),
     "style.recommendation@v1",
-    "novel.review.chapter@v2",
+    "novel.review.chapter@v3",
     promptKey(chapterWriterPrompt),
     promptKey(chapterArtifactDeltaPrompt),
     "world.draft.generate@v1",
@@ -522,7 +522,7 @@ test("volume strategy prompt renders volume count guidance and fixed-count const
 });
 
 test("registered volume strategy prompt uses the shared 24-volume ceiling", () => {
-  const asset = getRegisteredPromptAsset("novel.volume.strategy", "v2");
+  const asset = getRegisteredPromptAsset("novel.volume.strategy", "v3");
   assert.ok(asset);
   const messages = asset.render({}, {
     blocks: [],
@@ -681,8 +681,8 @@ test("novel main-chain prompt assets declare explicit non-zero context budgets",
     ["novel.volume.chapter_task_sheet@v3", NOVEL_PROMPT_BUDGETS.volumeChapterDetail],
     ["novel.volume.rebalance.adjacent@v1", NOVEL_PROMPT_BUDGETS.volumeRebalance],
     [promptKey(chapterWriterPrompt), NOVEL_PROMPT_BUDGETS.chapterWriter],
-    ["novel.review.chapter@v2", NOVEL_PROMPT_BUDGETS.chapterReview],
-    ["novel.review.repair@v2", NOVEL_PROMPT_BUDGETS.chapterRepair],
+    ["novel.review.chapter@v3", NOVEL_PROMPT_BUDGETS.chapterReview],
+    ["novel.review.repair@v3", NOVEL_PROMPT_BUDGETS.chapterRepair],
     ["audit.chapter.full@v2", NOVEL_PROMPT_BUDGETS.chapterReview],
   ]);
 

@@ -94,7 +94,7 @@ export const chapterReviewPrompt: PromptAsset<
   z.infer<typeof fullAuditOutputSchema>
 > = {
   id: "novel.review.chapter",
-  version: "v2",
+  version: "v3",
   taskType: "critical_review",
   mode: "structured",
   language: "zh",
@@ -171,7 +171,7 @@ export const chapterReviewPrompt: PromptAsset<
 
 export const chapterRepairPrompt: PromptAsset<ChapterRepairPromptInput, string, string> = {
   id: "novel.review.repair",
-  version: "v2",
+  version: "v3",
   taskType: "repair",
   mode: "text",
   language: "zh",

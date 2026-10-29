@@ -87,6 +87,7 @@ export const runtimeCharacterMindStateSchema = z.object({
   evidence: z.array(z.string()).default([]),
   confidence: z.number().nullable().optional(),
   sourceChapterId: z.string().nullable().optional(),
+  sourceChapterOrder: z.number().int().nullable().optional(),
 });
 
 export const runtimeCharacterDialogueGuidanceSchema = z.object({

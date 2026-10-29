@@ -2,7 +2,7 @@ import type { ChapterRepairContext, ChapterRuntimePackage } from "@novelfoundry/
 import type { LLMProvider } from "@novelfoundry/shared/types/llm";
 import type { ReviewIssue } from "@novelfoundry/shared/types/novel";
 import { runTextPrompt } from "../../../../prompting/core/promptRunner";
-import { buildChapterRepairContextBlocks } from "../../../../prompting/prompts/novel/chapterLayeredContext";
+import { buildChapterRepairContextBlocks, buildPlannedCastText } from "../../../../prompting/prompts/novel/chapterLayeredContext";
 import { chapterRepairPrompt } from "../../../../prompting/prompts/novel/review.prompts";
 import { ChapterRepairInvocationFailedError, isRecoverableChapterAiFailure } from "./ChapterRepairFailurePolicy";
 import {
@@ -154,6 +154,7 @@ function buildRepairRagContext(input: {
     return "none";
   }
   const fragments = [
+    buildPlannedCastText(writeContext),
     writeContext.previousChapterTail
       ? `上一章尾段：${writeContext.previousChapterTail}`
       : "",
@@ -164,7 +165,7 @@ function buildRepairRagContext(input: {
       ? `待回收冲突：\n${writeContext.openConflictSummaries.slice(0, 5).map((item) => `- ${item}`).join("\n")}`
       : "",
     writeContext.characterHardFacts?.length
-      ? `角色硬事实：\n${writeContext.characterHardFacts.slice(0, 6).map((item) => [
+      ? `角色硬事实：\n${writeContext.characterHardFacts.map((item) => [
           item.name,
           item.currentState ? `状态=${item.currentState}` : "",
           item.currentGoal ? `目标=${item.currentGoal}` : "",

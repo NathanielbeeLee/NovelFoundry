@@ -105,6 +105,8 @@ export function selectCharacterHardFactsForWriter(input: {
       selectedIds.add(guide.characterId);
     }
   }
-  const selected = input.hardFacts.filter((fact) => selectedIds.has(fact.characterId));
-  return selected.length > 0 ? selected.slice(0, 8) : input.hardFacts.slice(0, 4);
+  const participantIds = new Set(input.participants.map((character) => character.id));
+  const required = input.hardFacts.filter((fact) => participantIds.has(fact.characterId));
+  const optional = input.hardFacts.filter((fact) => !participantIds.has(fact.characterId) && selectedIds.has(fact.characterId));
+  return [...required, ...optional.slice(0, Math.max(0, 8 - required.length))];
 }

@@ -8,6 +8,7 @@ below; their source evidence is retained in local maintainer archives.
 
 ### 2026-10-29
 
+- Ensemble chapters retain every clearly identified planned character and their relevant facts through writing and repair, while ambiguous names remain explicit and later-chapter knowledge stays excluded.
 - Chapter editing preserves indentation, repeated spaces and blank lines through selection, AI revision, saving and device recovery.
 - Chapter planning review reads scene plans and reader-experience goals together, helping avoid unnecessary repairs caused by list formatting, natural-language hooks, or a chapter turn echoed in its scenes. Missing or invalid planning details remain visible for review.
 

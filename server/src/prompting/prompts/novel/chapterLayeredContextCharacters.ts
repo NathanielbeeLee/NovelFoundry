@@ -2,6 +2,7 @@ import type {
   ChapterWriteContext,
   GenerationContextPackage,
 } from "@novelfoundry/shared/types/chapterRuntime";
+import { resolvePlannedCast } from "./context/plannedCast";
 import { compactText, takeUnique } from "./chapterLayeredContextShared";
 
 function buildVisibleProfileSummary(
@@ -40,11 +41,14 @@ export function buildDynamicCharacterGuidance(
 
   const currentChapterOrder = contextPackage.chapter.order;
   const rosterById = new Map(contextPackage.characterRoster.map((character) => [character.id, character]));
-  const mindByCharacterId = new Map((contextPackage.characterMindStates ?? []).map((mind) => [mind.characterId, mind]));
+  const mindByCharacterId = new Map((contextPackage.characterMindStates ?? [])
+    .filter((mind) => !mind.sourceChapterId || (mind.sourceChapterOrder != null && mind.sourceChapterOrder < currentChapterOrder))
+    .map((mind) => [mind.characterId, mind]));
   const dialogueGuidanceByCharacterId = new Map(
     (contextPackage.characterDialogueGuidances ?? []).map((guidance) => [guidance.characterId, guidance]),
   );
-  const planParticipantNames = new Set((contextPackage.plan?.participants ?? []).map((item) => compactText(item)));
+  const planned = resolvePlannedCast(contextPackage);
+  const requiredIds = new Set(planned.characters.map((item) => item.id));
   const conflictCharacterIds = new Set(
     contextPackage.openConflicts.flatMap((conflict) => conflict.affectedCharacterIds ?? []),
   );
@@ -74,7 +78,8 @@ export function buildDynamicCharacterGuidance(
   }
 
   const characterBehaviorGuides = overview.characters
-    .filter((item) => rosterById.has(item.characterId))
+    .filter((item) => rosterById.has(item.characterId)
+      && (requiredIds.has(item.characterId) || !planned.unresolved.includes(item.name)))
     .map((item) => {
       const roster = rosterById.get(item.characterId);
       const relationStages = relationStageByCharacterId.get(item.characterId) ?? [];
@@ -103,7 +108,7 @@ export function buildDynamicCharacterGuidance(
       } else if (item.absenceRisk === "info") {
         score += 8;
       }
-      if (planParticipantNames.has(item.name)) {
+      if (requiredIds.has(item.characterId)) {
         score += 16;
       }
       if (conflictCharacterIds.has(item.characterId)) {
@@ -165,7 +170,8 @@ export function buildDynamicCharacterGuidance(
       }
       return left.guide.name.localeCompare(right.guide.name, "zh-Hans-CN");
     })
-    .slice(0, 8)
+    .filter((item, index, ranked) => requiredIds.has(item.guide.characterId)
+      || ranked.slice(0, index).filter((entry) => !requiredIds.has(entry.guide.characterId)).length < 8)
     .map((item) => item.guide);
 
   return {
@@ -217,31 +223,28 @@ export function buildParticipants(
   characterBehaviorGuides: ChapterWriteContext["characterBehaviorGuides"] = [],
 ): GenerationContextPackage["characterRoster"] {
   const rosterById = new Map(contextPackage.characterRoster.map((character) => [character.id, character]));
-  const participantNames = new Set(contextPackage.plan?.participants ?? []);
+  const planned = resolvePlannedCast(contextPackage);
+  const selected = new Map(planned.characters.map((character) => [character.id, character]));
   const conflictCharacterIds = new Set(
     contextPackage.openConflicts.flatMap((conflict) => conflict.affectedCharacterIds ?? []),
   );
-  if (characterBehaviorGuides.length > 0) {
-    const selected = characterBehaviorGuides
-      .filter((guide) => (
-        guide.shouldPreferAppearance
-        || guide.isCoreInVolume
-        || guide.relationStageLabels.length > 0
-        || participantNames.has(guide.name)
-        || conflictCharacterIds.has(guide.characterId)
-      ))
-      .map((guide) => rosterById.get(guide.characterId))
-      .filter((character): character is NonNullable<typeof character> => Boolean(character));
-    if (selected.length > 0) {
-      return selected.slice(0, 6);
-    }
+  const backgroundIds = [
+    ...characterBehaviorGuides.filter((guide) => (
+      guide.shouldPreferAppearance || guide.isCoreInVolume || guide.relationStageLabels.length > 0
+    )).map((guide) => guide.characterId),
+    ...conflictCharacterIds,
+  ];
+  // Mandatory cast does not compete with background guidance for a fixed count.
+  const backgroundLimit = Math.max(0, 6 - selected.size);
+  let backgroundCount = 0;
+  for (const id of backgroundIds) {
+    const character = rosterById.get(id);
+    if (!character || selected.has(id) || backgroundCount >= backgroundLimit) continue;
+    // An unresolved same-name selection cannot be silently bound via a fallback.
+    if (planned.unresolved.includes(character.name)) continue;
+    selected.set(id, character);
+    backgroundCount += 1;
   }
-
-  const selected = contextPackage.characterRoster.filter((character) => (
-    participantNames.has(character.name) || conflictCharacterIds.has(character.id)
-  ));
-  if (selected.length > 0) {
-    return selected.slice(0, 6);
-  }
+  if (selected.size || (contextPackage.plan?.participants.length ?? 0) > 0) return [...selected.values()];
   return contextPackage.characterRoster.slice(0, 4);
 }

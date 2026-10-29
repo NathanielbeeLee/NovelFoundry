@@ -153,6 +153,10 @@ test("assembler refreshes chapter execution fields after chapter plan regenerati
     consistencyFactFindMany: prisma.consistencyFact.findMany,
     chapterFindMany: prisma.chapter.findMany,
     creativeDecisionFindMany: prisma.creativeDecision.findMany,
+    characterMindFindMany: prisma.characterMindSnapshot.findMany,
+    characterDialogueFindMany: prisma.characterDialogueInfluence.findMany,
+    knowledgeResearchAdoptionFindMany: prisma.knowledgeResearchAdoption.findMany,
+    novelFactEntryFindMany: prisma.novelFactEntry.findMany,
     ensureChapterPlan: plannerService.ensureChapterPlan,
     buildPlanPromptBlock: plannerService.buildPlanPromptBlock,
     buildStateContext: contextAssemblyService.build,
@@ -209,6 +213,17 @@ test("assembler refreshes chapter execution fields after chapter plan regenerati
     prisma.consistencyFact.findMany = async () => [];
     prisma.chapter.findMany = async () => [];
     prisma.creativeDecision.findMany = async () => [];
+    prisma.characterMindSnapshot.findMany = async ({ where, select }) => {
+      assert.deepEqual(where, {
+        novelId: "novel-1", isCurrent: true,
+        OR: [{ sourceChapterId: null }, { sourceChapter: { novelId: "novel-1", order: { lt: 1 } } }],
+      });
+      assert.deepEqual(select.sourceChapter, { select: { order: true } });
+      return [];
+    };
+    prisma.characterDialogueInfluence.findMany = async () => [];
+    prisma.knowledgeResearchAdoption.findMany = async () => [];
+    prisma.novelFactEntry.findMany = async () => [];
     plannerService.ensureChapterPlan = async () => ({
       id: "plan-1",
       chapterId: "chapter-1",
@@ -285,8 +300,8 @@ test("assembler refreshes chapter execution fields after chapter plan regenerati
     assert.equal(assembled.chapter.taskSheet, "新任务单");
     assert.equal(assembled.contextPackage.chapter.sceneCards, freshSceneCards);
     assert.equal(assembled.contextPackage.storyWorldSlice, storyWorldSlice);
-    assert.match(assembled.contextPackage.chapter.supportingContextText, /本书世界上下文/);
-    assert.match(assembled.contextPackage.chapter.supportingContextText, /星核枯竭的北境舞台/);
+    assert.equal(assembled.contextPackage.chapter.supportingContextText, "");
+    assert.ok(assembled.contextPackage.chapterReviewContext.worldRules.includes(storyWorldSlice.coreWorldFrame));
     assert.equal(assembled.contextPackage.chapterWriteContext.chapterBoundary.entryState, "新合同入口1");
     assert.ok(assembled.contextPackage.chapterWriteContext.chapterBoundary.doNotCross.includes("新禁止"));
   } finally {
@@ -300,6 +315,10 @@ test("assembler refreshes chapter execution fields after chapter plan regenerati
     prisma.consistencyFact.findMany = originals.consistencyFactFindMany;
     prisma.chapter.findMany = originals.chapterFindMany;
     prisma.creativeDecision.findMany = originals.creativeDecisionFindMany;
+    prisma.characterMindSnapshot.findMany = originals.characterMindFindMany;
+    prisma.characterDialogueInfluence.findMany = originals.characterDialogueFindMany;
+    prisma.knowledgeResearchAdoption.findMany = originals.knowledgeResearchAdoptionFindMany;
+    prisma.novelFactEntry.findMany = originals.novelFactEntryFindMany;
     plannerService.ensureChapterPlan = originals.ensureChapterPlan;
     plannerService.buildPlanPromptBlock = originals.buildPlanPromptBlock;
     contextAssemblyService.build = originals.buildStateContext;

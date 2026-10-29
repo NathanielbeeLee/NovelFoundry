@@ -5,7 +5,7 @@ import { dynamicCharacterRiskLevelSchema } from "./dynamicCharacterSchemas.js";
 import { generationNextActionSchema, chapterStateGoalSchema, chapterPayoffDirectiveSchema } from "../canonicalState.js";
 import { lengthBudgetContractSchema, chapterScenePlanSchema } from "../chapterLengthControl.js";
 import { readerExperienceContractSchema, EMPTY_READER_EXPERIENCE_CONTRACT } from "../novel/readerExperience.js";
-import { runtimeCharacterSchema } from "./sourceSchemas.js";
+import { runtimeCharacterSchema, runtimeCharacterMindStateSchema } from "./sourceSchemas.js";
 import { runtimePayoffLedgerItemSchema, runtimePayoffLedgerSummarySchema } from "./payoffSchemas.js";
 import { timelineContextForChapterSchema } from "../timeline.js";
 import { characterResourceContextSchema } from "../characterResource.js";
@@ -193,6 +193,12 @@ export const chapterWriteContextSchema = z.object({
   scenePlan: chapterScenePlanSchema.nullable().optional(),
   readerExperience: readerExperienceContractSchema.default(EMPTY_READER_EXPERIENCE_CONTRACT),
   participants: z.array(runtimeCharacterSchema),
+  plannedCast: z.object({
+    characters: z.array(z.object({ id: z.string(), name: z.string() })),
+    unresolved: z.array(z.string()),
+    knowledge: z.array(runtimeCharacterMindStateSchema),
+    omittedBackgroundIds: z.array(z.string()),
+  }).optional(),
   characterHardFacts: z.array(chapterCharacterHardFactSchema).default([]),
   characterBehaviorGuides: z.array(chapterCharacterBehaviorGuideSchema).default([]),
   activeRelationStages: z.array(chapterRelationStageGuideSchema).default([]),

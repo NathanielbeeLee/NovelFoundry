@@ -993,6 +993,7 @@ test("chapter context only supplies mind and active dialogue guidance to actual 
       evidence: ["主角攥紧维修通道钥匙。"],
       confidence: 0.84,
       sourceChapterId: "chapter-4",
+      sourceChapterOrder: 4,
     },
     {
       characterId: "char-3",
@@ -1004,6 +1005,7 @@ test("chapter context only supplies mind and active dialogue guidance to actual 
       evidence: ["旁观者没有出现在本章计划中。"],
       confidence: 0.7,
       sourceChapterId: "chapter-4",
+      sourceChapterOrder: 4,
     },
   ];
   contextPackage.characterDialogueGuidances = [

@@ -18,6 +18,7 @@ import {
   takeUnique,
   toListBlock,
 } from "../chapterLayeredContextShared";
+import { buildPlannedCastText } from "./plannedCast";
 import { normalizeChapterWriteContext } from "./chapterContextPolicies";
 
 export const WRITER_FORBIDDEN_GROUPS = [
@@ -90,7 +91,7 @@ function buildCharacterHardFactsText(writeContext: ChapterWriteContext): string 
     hasPendingReviewFields
       ? "标记为待确认的当前状态/当前目标只作参考；如与最新剧情冲突，可按合理逻辑调整。"
       : "",
-    ...hardFacts.slice(0, 8).map((fact) => {
+    ...hardFacts.map((fact) => {
       const pendingReviewFields = new Set(fact.pendingReviewFields ?? []);
       const parts = takeUnique([
         fact.role ? `角色定位=${fact.role}` : "",
@@ -448,7 +449,8 @@ export function buildChapterWriterContextBlocks(
       group: "participant_subset",
       priority: 92,
       required: true,
-      content: buildParticipantText(writeContext),
+      allowSummary: false,
+      content: [buildPlannedCastText(writeContext), buildParticipantText(writeContext)].filter(Boolean).join("\n\n"),
     }),
     includeCharacterDynamics
       ? createContextBlock({

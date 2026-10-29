@@ -212,11 +212,15 @@ export class GenerationContextAssembler {
         chapterOrder: chapter.order,
       }).catch(() => null),
       prisma.characterMindSnapshot.findMany({
-        where: { novelId, isCurrent: true },
+        where: {
+          novelId, isCurrent: true,
+          OR: [{ sourceChapterId: null }, { sourceChapter: { novelId, order: { lt: chapter.order } } }],
+        },
         select: {
           characterId: true, currentInterpretation: true, privateIntent: true, activePlan: true,
           emotionalStance: true, actionTendency: true, decisionTrigger: true, beliefsJson: true,
           misbeliefsJson: true, evidenceJson: true, confidence: true, sourceChapterId: true,
+          sourceChapter: { select: { order: true } },
         },
         orderBy: { updatedAt: "desc" },
       }),
@@ -407,6 +411,7 @@ export class GenerationContextAssembler {
       evidence: parseMindItems(item.evidenceJson),
       confidence: item.confidence,
       sourceChapterId: item.sourceChapterId,
+      sourceChapterOrder: item.sourceChapter?.order ?? null,
     }));
     const characterDialogueGuidances = characterDialogueRows.map((item) => ({
       influenceId: item.id,
@@ -612,7 +617,8 @@ export class GenerationContextAssembler {
       mustAdvance: chapterWriteContext.chapterMission.mustAdvance,
       targetConflicts: chapterWriteContext.chapterStateGoal?.targetConflicts ?? [],
       payoffTitles: chapterWriteContext.payoffDirectives.map((item) => item.title),
-      participantNames: chapterWriteContext.participants.map((participant) => participant.name),
+      participantNames: ((chapterWriteContext.plannedCast?.characters.length || chapterWriteContext.plannedCast?.unresolved.length)
+        ? chapterWriteContext.plannedCast.characters : chapterWriteContext.participants).map((participant) => participant.name),
       structuredOutline: novel.structuredOutline ?? null,
     });
     let ragText = "";
