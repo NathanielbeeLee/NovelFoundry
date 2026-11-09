@@ -332,11 +332,15 @@ are retained in [NOTICE](NOTICE).
 
 ## Latest update
 
-### 2026-10-29
+### 2026-11-09
 
-- Chapter information shows whether summaries, character and story state, timelines, and retrieval data correspond to saved prose, with separate pending, failed, outdated, partial and unconfirmed results. Refreshing this view only reads status.
-- Ensemble chapters retain every clearly identified planned character and their relevant facts through writing and repair, while ambiguous names remain explicit and later-chapter knowledge stays excluded.
-- Chapter editing preserves indentation, repeated spaces and blank lines through selection, AI revision, saving and device recovery.
-- Chapter planning review reads scene plans and reader-experience goals together, helping avoid unnecessary repairs caused by list formatting, natural-language hooks, or a chapter turn echoed in its scenes. Missing or invalid planning details remain visible for review.
+- AI tasks respect configured output allowances, giving longer results room to
+  finish within their prompt and provider limits.
+- World context preparation uses your selected model for both initial
+  generation and refresh.
+- Creative Hub, book analysis and execution results display Markdown tables
+  with horizontal scrolling for wide content.
+- Chapter writing guidance allows purposeful transitions and quieter reactions,
+  with paragraph shape and opening details driven by the scene.
 
 [Full update history](docs/releases/release-notes.md).

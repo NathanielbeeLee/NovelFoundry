@@ -232,6 +232,7 @@ export async function resolveLLMClientOptions(
   let resolvedModel = normalizeOptionalText(options.model);
   let resolvedTemperature: number | undefined = options.temperature;
   let resolvedMaxTokens: number | undefined = options.maxTokens;
+  let hasConfiguredOutputLimit = options.maxTokens != null;
   let resolvedModelRoute: string | undefined;
   let resolvedRouteDegraded = false;
 
@@ -256,6 +257,7 @@ export async function resolveLLMClientOptions(
     }
     if (options.maxTokens == null) {
       resolvedMaxTokens = route.maxTokens;
+      hasConfiguredOutputLimit = route.maxTokens != null;
     }
     if (options.requestProtocol == null) {
       options.requestProtocol = route.requestProtocol;
@@ -338,6 +340,8 @@ export async function resolveLLMClientOptions(
     structuredProfile
     && typeof structuredProfile.safeStructuredMaxTokens === "number"
     && typeof effectiveMaxTokens === "number"
+    // A compatibility default must not lower an explicit task or route allowance.
+    && !hasConfiguredOutputLimit
   ) {
     effectiveMaxTokens = Math.min(effectiveMaxTokens, structuredProfile.safeStructuredMaxTokens);
   }

@@ -25,13 +25,13 @@ import {
 interface EnsureStoryWorldSliceOptions {
   storyInput?: string;
   builderMode?: StoryWorldSliceBuilderMode;
+  provider?: LLMProvider;
+  model?: string;
+  temperature?: number;
 }
 
 interface RefreshStoryWorldSliceOptions extends EnsureStoryWorldSliceOptions {
   overrides?: StoryWorldSliceOverrides;
-  provider?: LLMProvider;
-  model?: string;
-  temperature?: number;
 }
 
 interface ActiveWorldSource {
@@ -320,6 +320,9 @@ export class NovelWorldSliceService {
       storyInput,
       overrides,
       builderMode: options.builderMode ?? "runtime",
+      provider: options.provider,
+      model: options.model,
+      temperature: options.temperature,
     });
     await this.persistSlice(novelId, nextSlice, overrides);
     return nextSlice;

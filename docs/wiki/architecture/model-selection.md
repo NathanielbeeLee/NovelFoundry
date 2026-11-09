@@ -26,6 +26,18 @@ classify user intent, choose another model, or authorize switching protocols.
 Keep it in the shared capability policy consumed by the LLM factory rather
 than duplicating it in chapter and planning services.
 
+## Structured output allowances
+
+Explicit task and model-route output allowances take precedence over a
+profile's generic structured-output safety default. Keep the resolved allowance
+through strategy changes, prepared execution and JSON repair. Registered prompt
+output caps and provider-specific route normalization still constrain that
+allowance; native protocols that require omitting the parameter keep their
+existing compatibility behavior.
+
+Resolving no allowance must leave it unset. Output length, chapter review request
+counts and book token budgets are separate controls with their own owners.
+
 ## Last-known custom model catalogs
 
 The provider module owns persisted discovery history in existing settings
