@@ -55,6 +55,19 @@ draft version, reorder saved chapters, or invent missing story semantics.
 This projection follows the existing legacy parsing rules; it does not promise
 lossless reconstruction of arbitrary malformed outlines.
 
+## Generated chapter title gate
+
+Generated chapter lists pass a deterministic title gate graded by severity.
+Duplicate, first-person, overlong or synopsis-like titles block at every merge.
+Surface-frame concentration is a whole-volume property: partial beat merges do
+not fail on it, because later beats can still dilute it. The final merged list
+fails only when one frame covers half of the list or more. A marginal overshoot
+(one title over the frame allowance, or a run of exactly four adjacent titles,
+while still below half of the list) is accepted, and the director shows it as a
+chapter-list follow-up notice instead of failing the planning step. Keep the gate
+in `services/novel/volume/chapterTitleDiversity.ts`; callers use
+`enforceGeneratedChapterTitleDiversity` rather than throwing on any finding.
+
 ## Chapter contract review
 
 Semantic contract review consumes the same parsed scene plan as structural

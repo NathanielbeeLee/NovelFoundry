@@ -181,6 +181,21 @@ function normalizePayoffRiskSignal(value: unknown, index: number): unknown {
   };
 }
 
+// Payoff evidence must quote what the chapter shows. Text under a common alias
+// key is kept; an item without any evidence text is dropped instead of being
+// filled from the parent summary, so one malformed item cannot fail the chapter.
+function normalizePayoffEvidenceItem(value: unknown): unknown {
+  if (typeof value === "string") {
+    const summary = value.trim();
+    return summary ? { summary } : undefined;
+  }
+  if (!isRecord(value)) {
+    return undefined;
+  }
+  const summary = readString(value, ["summary", "description", "text", "quote", "excerpt"]);
+  return summary ? { ...value, summary } : undefined;
+}
+
 function normalizePayoffDelta(value: unknown): unknown {
   if (!isRecord(value)) {
     return value;
@@ -212,10 +227,16 @@ function normalizePayoffDelta(value: unknown): unknown {
   const riskSignals = Array.isArray(value.riskSignals)
     ? value.riskSignals.map((signal, index) => normalizePayoffRiskSignal(signal, index))
     : value.riskSignals;
+  const evidence = Array.isArray(value.evidence)
+    ? value.evidence
+      .map((item) => normalizePayoffEvidenceItem(item))
+      .filter((item) => item !== undefined)
+    : value.evidence;
   return {
     ...value,
     scopeType,
     currentStatus,
+    evidence,
     riskSignals,
   };
 }

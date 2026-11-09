@@ -116,7 +116,20 @@ function formatFrameLabel(frame: ChapterTitleSurfaceFrame): string {
   return "“平铺直述型”";
 }
 
-export function getChapterTitleDiversityIssue(titles: string[]): string | null {
+/**
+ * - blocking: duplicate, first-person, overlong or synopsis-like titles.
+ * - severe: one surface frame covers half of the list or more.
+ * - marginal: a frame exceeds its allowance by one title, or a run of exactly
+ *   four adjacent titles, while still covering less than half of the list.
+ */
+export type ChapterTitleDiversitySeverity = "blocking" | "severe" | "marginal";
+
+export interface ChapterTitleDiversityAssessment {
+  issue: string;
+  severity: ChapterTitleDiversitySeverity;
+}
+
+export function assessChapterTitleDiversity(titles: string[]): ChapterTitleDiversityAssessment | null {
   if (!ENABLE_CHAPTER_TITLE_DIVERSITY_VALIDATION) {
     return null;
   }
@@ -124,7 +137,7 @@ export function getChapterTitleDiversityIssue(titles: string[]): string | null {
   for (const title of normalizedTitles) {
     const basicQualityIssue = getChapterTitleBasicQualityIssue(title);
     if (basicQualityIssue) {
-      return basicQualityIssue;
+      return { issue: basicQualityIssue, severity: "blocking" };
     }
   }
 
@@ -143,7 +156,7 @@ export function getChapterTitleDiversityIssue(titles: string[]): string | null {
 
   for (const title of normalizedTitles) {
     if (seenTitles.has(title)) {
-      return `章节标题出现重复：${title}。请确保每章标题唯一。`;
+      return { issue: `章节标题出现重复：${title}。请确保每章标题唯一。`, severity: "blocking" };
     }
     seenTitles.add(title);
 
@@ -176,11 +189,13 @@ export function getChapterTitleDiversityIssue(titles: string[]): string | null {
   const ofPhraseCount = frameCounts.get("of_phrase") ?? 0;
   const maxAllowedOfPhraseCount = maximumOfPhraseCount(normalizedTitles.length);
   if (ofPhraseCount > maxAllowedOfPhraseCount) {
-    return [
+    const issue = [
       `章节标题结构过于集中：${ofPhraseCount}/${normalizedTitles.length} 个标题使用了“X的Y / X中的Y”式结构。`,
       ofPhraseExamples.length > 0 ? `重复骨架示例：${ofPhraseExamples.join("、")}。` : "",
       "请降低这类标题占比，改用动作推进型、冲突压迫型、异常发现型、结果兑现型等不同章名。",
     ].filter(Boolean).join("");
+    const marginal = ofPhraseCount - maxAllowedOfPhraseCount <= 1 && ofPhraseCount * 2 < normalizedTitles.length;
+    return { issue, severity: marginal ? "marginal" : "severe" };
   }
 
   let dominantFrame: ChapterTitleSurfaceFrame = "plain_statement";
@@ -195,18 +210,27 @@ export function getChapterTitleDiversityIssue(titles: string[]): string | null {
   const maxAllowedSingleFrameCount = maximumSingleFrameCount(normalizedTitles.length);
   if (dominantFrame !== "plain_statement" && dominantFrameCount > maxAllowedSingleFrameCount) {
     const examples = frameExamples.get(dominantFrame) ?? [];
-    return [
+    const issue = [
       `章节标题结构过于集中：${dominantFrameCount}/${normalizedTitles.length} 个标题都落在 ${formatFrameLabel(dominantFrame)} 骨架上。`,
       examples.length > 0 ? `重复骨架示例：${examples.join("、")}。` : "",
       "请把标题改得更分散，混用动作推进型、冲突压迫型、异常发现型、结果兑现型、决断转向型等不同句法。",
     ].filter(Boolean).join("");
+    // Exceeding the single-frame allowance already means half of the list or more.
+    return { issue, severity: "severe" };
   }
 
   if (maxFrameClusterCount > 3 && dominantClusterFrame && dominantClusterFrame !== "plain_statement") {
-    return `相邻章节标题结构过于重复：连续 ${maxFrameClusterCount} 个标题都在使用 ${formatFrameLabel(dominantClusterFrame)} 骨架。请把相邻章名改成不同句法。`;
+    const issue = `相邻章节标题结构过于重复：连续 ${maxFrameClusterCount} 个标题都在使用 ${formatFrameLabel(dominantClusterFrame)} 骨架。请把相邻章名改成不同句法。`;
+    const clusterFrameCount = frameCounts.get(dominantClusterFrame) ?? 0;
+    const marginal = maxFrameClusterCount <= 4 && clusterFrameCount * 2 < normalizedTitles.length;
+    return { issue, severity: marginal ? "marginal" : "severe" };
   }
 
   return null;
+}
+
+export function getChapterTitleDiversityIssue(titles: string[]): string | null {
+  return assessChapterTitleDiversity(titles)?.issue ?? null;
 }
 
 export function isChapterTitleDiversityIssue(message: string | null | undefined): boolean {
@@ -240,4 +264,24 @@ export function assertChapterTitleDiversity(titles: string[]): void {
   if (issue) {
     throw new Error(issue);
   }
+}
+
+/**
+ * Gate for generated chapter lists. Frame concentration is a whole-volume
+ * property, so a partial merge only fails on blocking title defects. The final
+ * list fails on blocking or severe findings; a marginal finding is accepted and
+ * remains visible through getChapterTitleDiversityIssue as a follow-up notice.
+ */
+export function enforceGeneratedChapterTitleDiversity(
+  titles: string[],
+  phase: "intermediate" | "final",
+): void {
+  const assessment = assessChapterTitleDiversity(titles);
+  if (!assessment || assessment.severity === "marginal") {
+    return;
+  }
+  if (assessment.severity === "severe" && phase === "intermediate") {
+    return;
+  }
+  throw new Error(assessment.issue);
 }

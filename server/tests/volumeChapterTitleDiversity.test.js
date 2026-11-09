@@ -420,3 +420,32 @@ test("volume chapter list prompt blocks copied titles from earlier beats after s
     setPromptRunnerStructuredInvokerForTests();
   }
 });
+
+test("generated chapter title gate grades concentration by whole-volume severity", () => {
+  const {
+    assessChapterTitleDiversity,
+    enforceGeneratedChapterTitleDiversity,
+  } = require("../dist/services/novel/volume/chapterTitleDiversity.js");
+  // 10 titles allow 3 "X的Y" titles; 4 is marginal and still below half the list.
+  const marginalTitles = [
+    "雨夜的密令", "旧港的灯", "铜钥的去向", "城门的暗号",
+    "截住来信", "夜探粮仓", "断桥追兵", "账册失窃", "火烧码头", "折返旧宅",
+  ];
+  assert.equal(assessChapterTitleDiversity(marginalTitles)?.severity, "marginal");
+  assert.doesNotThrow(() => enforceGeneratedChapterTitleDiversity(marginalTitles, "final"));
+  assert.ok(getChapterTitleDiversityIssue(marginalTitles), "marginal finding stays visible as a notice");
+
+  // Half of the list or more stays a final failure, but a partial merge may still be diluted.
+  const severeTitles = [
+    "雨夜的密令", "旧港的灯", "铜钥的去向", "城门的暗号", "账房的灰烬", "截住来信",
+    "夜探粮仓", "断桥追兵", "火烧码头", "折返旧宅",
+  ];
+  assert.equal(assessChapterTitleDiversity(severeTitles)?.severity, "severe");
+  assert.throws(() => enforceGeneratedChapterTitleDiversity(severeTitles, "final"), /章节标题结构过于集中/);
+  assert.doesNotThrow(() => enforceGeneratedChapterTitleDiversity(severeTitles, "intermediate"));
+
+  // Duplicate titles block at every phase.
+  const duplicateTitles = ["截住来信", "夜探粮仓", "截住来信"];
+  assert.equal(assessChapterTitleDiversity(duplicateTitles)?.severity, "blocking");
+  assert.throws(() => enforceGeneratedChapterTitleDiversity(duplicateTitles, "intermediate"), /章节标题出现重复/);
+});

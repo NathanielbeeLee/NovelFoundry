@@ -6,6 +6,11 @@ below; their source evidence is retained in local maintainer archives.
 
 ## History
 
+### 2026-11-09
+
+- Automatic chapter splitting accepts a volume whose chapter titles are only slightly repetitive and shows a reminder to vary them, so planning continues to the next step. Duplicate titles and heavily repetitive title lists still ask for a new attempt.
+- Chapter synchronization continues when AI returns a foreshadowing record without supporting text, saving that foreshadowing with the evidence that is available.
+
 ### 2026-10-29
 
 - Chapter information shows whether summaries, character and story state, timelines, and retrieval data correspond to saved prose, with separate pending, failed, outdated, partial and unconfirmed results. Refreshing this view only reads status.

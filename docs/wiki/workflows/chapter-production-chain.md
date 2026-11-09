@@ -114,6 +114,12 @@ output tokens, subject to the existing provider and structured-output limits;
 JSON repair keeps the prepared invocation allowance. This is the existing prompt
 policy, not a guarantee that task-route limits override registered prompt limits.
 
+Payoff evidence in artifact extraction must carry evidence text. Parsing accepts
+plain strings and common alias keys for that text, and drops an evidence item
+that has none rather than copying the parent payoff summary into it. One
+malformed evidence item therefore leaves that payoff with less evidence instead
+of failing the whole chapter's synchronization.
+
 ## Extension rule
 
 New routes, streams, jobs, or director commands may provide a different

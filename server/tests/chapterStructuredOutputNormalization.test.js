@@ -626,3 +626,44 @@ test("artifact clue aliases preserve full identities and canonical title precede
     assert.equal(chapterArtifactDeltaOutputSchema.safeParse(artifactWithExtractedState([invalid])).success, false);
   }
 });
+
+test("chapter artifact payoff evidence keeps alias text and drops items without evidence text", () => {
+  const parsed = chapterArtifactDeltaOutputSchema.parse({
+    summary: "程秩在本章布下伏笔。",
+    stateDeltas: {},
+    syncPlan: { payoffLedger: "delta", reason: "本章新增伏笔需要写入账本。" },
+    confidence: 0.8,
+    payoffDeltas: [
+      {
+        ledgerKey: "foreshadow-missing",
+        title: "缺证据伏笔",
+        summary: "第一处伏笔的本章摘要。",
+        scopeType: "book",
+        currentStatus: "hinted",
+        evidence: [{ chapterOrder: 3 }],
+      },
+      {
+        ledgerKey: "foreshadow-alias",
+        title: "别名证据伏笔",
+        summary: "父级摘要。",
+        scopeType: "book",
+        currentStatus: "hinted",
+        evidence: [{ text: "程秩把后门铜钥匙收进袖中。", chapterOrder: 3 }],
+      },
+      {
+        ledgerKey: "foreshadow-string",
+        title: "字符串证据伏笔",
+        summary: "父级摘要。",
+        scopeType: "chapter",
+        currentStatus: "setup",
+        evidence: ["守门人提到换岗时辰。"],
+      },
+    ],
+  });
+
+  assert.equal(parsed.payoffDeltas.length, 3);
+  assert.deepEqual(parsed.payoffDeltas[0].evidence, []);
+  assert.equal(parsed.payoffDeltas[1].evidence[0].summary, "程秩把后门铜钥匙收进袖中。");
+  assert.equal(parsed.payoffDeltas[1].evidence[0].chapterOrder, 3);
+  assert.equal(parsed.payoffDeltas[2].evidence[0].summary, "守门人提到换岗时辰。");
+});
