@@ -51,6 +51,8 @@ import {
 } from "../components/directorCandidateSelectionHandlers";
 import { useNovelAutoDirectorCandidateMutations } from "../components/useNovelAutoDirectorCandidateMutations";
 import { hasCreationFoundationChanged } from "./creationFoundationPickerState";
+import type { AutoDirectorCreateDraft } from "./draft/autoDirectorCreateDraft";
+import { getDirectionGenerationDisabledReasons } from "./domain/generationReadiness";
 
 interface UseAutoDirectorCreateControllerInput {
   basicForm: NovelBasicFormState;
@@ -69,6 +71,8 @@ interface UseAutoDirectorCreateControllerInput {
   worldOptions: Array<{ id: string; name: string }>;
   workflowTaskId?: string;
   restoredTask?: UnifiedTaskDetail | null;
+  /** Device-local opening draft, used only before a director task exists. */
+  initialDraft?: AutoDirectorCreateDraft | null;
   onWorkflowTaskChange?: (workflowTaskId: string) => void;
   onBasicFormChange: (patch: Partial<NovelBasicFormState>) => void;
 }
@@ -94,13 +98,14 @@ export function useAutoDirectorCreateController(input: UseAutoDirectorCreateCont
     worldOptions,
     workflowTaskId: workflowTaskIdProp,
     restoredTask,
+    initialDraft,
     onWorkflowTaskChange,
     onBasicFormChange,
   } = input;
   const navigate = useNavigate();
   const llm = useLLMStore();
   const queryClient = useQueryClient();
-  const [idea, setIdea] = useState("");
+  const [idea, setIdea] = useState(initialDraft?.idea ?? "");
   const [feedback, setFeedback] = useState("");
   const [selectedPresets, setSelectedPresets] = useState<DirectorCorrectionPreset[]>([]);
   const [batches, setBatches] = useState<DirectorCandidateBatch[]>([]);
@@ -110,10 +115,10 @@ export function useAutoDirectorCreateController(input: UseAutoDirectorCreateCont
   const [executionRequested, setExecutionRequested] = useState(false);
   const [pendingTitleHint, setPendingTitleHint] = useState("");
   const [executionError, setExecutionError] = useState("");
-  const [runMode, setRunMode] = useState<DirectorRunMode>(DEFAULT_VISIBLE_RUN_MODE);
-  const [worldSetupMode, setWorldSetupMode] = useState<DirectorWorldSetupMode>("auto_generate");
+  const [runMode, setRunMode] = useState<DirectorRunMode>(initialDraft?.runMode ?? DEFAULT_VISIBLE_RUN_MODE);
+  const [worldSetupMode, setWorldSetupMode] = useState<DirectorWorldSetupMode>(initialDraft?.worldSetupMode ?? "auto_generate");
   const [autoExecutionDraft, setAutoExecutionDraft] = useState(() => createDefaultDirectorAutoExecutionDraftState());
-  const [selectedStyleProfileId, setSelectedStyleProfileId] = useState("");
+  const [selectedStyleProfileId, setSelectedStyleProfileId] = useState(initialDraft?.selectedStyleProfileId ?? "");
   const [ideaInspirations, setIdeaInspirations] = useState<DirectorIdeaInspiration[]>([]);
   const [candidatePatchFeedbacks, setCandidatePatchFeedbacks] = useState<Record<string, string>>({});
   const [titlePatchFeedbacks, setTitlePatchFeedbacks] = useState<Record<string, string>>({});
@@ -508,7 +513,11 @@ export function useAutoDirectorCreateController(input: UseAutoDirectorCreateCont
     setBatches((prev) => applyDirectorCandidateTitleOption(prev, batchId, candidateId, option));
   };
 
-  const canGenerate = idea.trim().length > 0 && !generateMutation.isPending;
+  const generationDisabledReasons = getDirectionGenerationDisabledReasons({
+    idea,
+    isGenerating: generateMutation.isPending,
+  });
+  const canGenerate = generationDisabledReasons.length === 0;
 
   const updateProductionFoundation = async (patch: Partial<{
     genreId: string;
@@ -654,6 +663,7 @@ export function useAutoDirectorCreateController(input: UseAutoDirectorCreateCont
     isUpdatingFoundation,
     updateProductionFoundation,
     canGenerate,
+    generationDisabledReasons,
     generateMutation,
     patchCandidateMutation,
     refineTitleMutation,

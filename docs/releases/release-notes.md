@@ -10,6 +10,11 @@ below; their source evidence is retained in local maintainer archives.
 
 - Automatic chapter splitting accepts a volume whose chapter titles are only slightly repetitive and shows a reminder to vary them, so planning continues to the next step. Duplicate titles and heavily repetitive title lists still ask for a new attempt.
 - Chapter synchronization continues when AI returns a foreshadowing record without supporting text, saving that foreshadowing with the evidence that is available.
+- Character names fit the story's era, region and each character's background. Names you choose or confirm stay unchanged.
+- Chapter summaries record what each chapter leaves behind, including misunderstandings, unspoken intentions, unresolved conflicts and unfinished promises, helping later chapters continue consistently.
+- The AI book-opening wizard restores your idea, settings and current step after a refresh. When direction generation cannot start, the reasons appear next to the button.
+- AI generation keeps the output length set for a task or model route, reducing truncated planning results on gateways with conservative defaults.
+- Automatic world preparation for a chapter uses the model you selected for that work.
 
 ### 2026-10-29
 

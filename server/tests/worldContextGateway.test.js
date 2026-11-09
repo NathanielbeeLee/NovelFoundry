@@ -161,6 +161,9 @@ test("gateway builds context through story slice service and persists slice to n
   const block = await gateway.getWorldContextBlock("novel-1", {
     purpose: "chapter",
     storyInput: "第一卷发生在北境。",
+    provider: "custom_world",
+    model: "world-model",
+    temperature: 0,
   });
 
   assert.equal(block.novelWorldId, "novel-world-1");
@@ -175,6 +178,9 @@ test("gateway builds context through story slice service and persists slice to n
     options: {
       builderMode: "runtime",
       storyInput: "第一卷发生在北境。",
+      provider: "custom_world",
+      model: "world-model",
+      temperature: 0,
     },
   }, {
     type: "persistStorySlice",

@@ -30,6 +30,11 @@ import {
   summarizeWorldStyleStage,
 } from "./directorCreateStages";
 import { useAutoDirectorCreateController } from "./useAutoDirectorCreateController";
+import {
+  clearAutoDirectorCreateDraft,
+  loadAutoDirectorCreateDraft,
+  saveAutoDirectorCreateDraft,
+} from "./draft/autoDirectorCreateDraft";
 
 const STAGE_ORDER: AutoDirectorCreateStageKey[] = ["idea", "basic", "world_style", "model_run", "candidates"];
 
@@ -55,10 +60,20 @@ export default function AutoDirectorCreatePage() {
   const legacyTaskIdFromQuery = searchParams.get("workflowTaskId")?.trim() ?? "";
   const normalizedTaskId = taskIdFromQuery || legacyTaskIdFromQuery;
   const hasLegacyParams = Boolean(legacyTaskIdFromQuery || searchParams.get("mode"));
-  const [basicForm, setBasicForm] = useState(() => createDefaultNovelBasicFormState());
+  // Only an opening without a director task reads or writes the device-local draft.
+  const [startedAsDraft] = useState(() => !normalizedTaskId);
+  const [initialDraft] = useState(() => (
+    startedAsDraft ? loadAutoDirectorCreateDraft(window.localStorage, createDefaultNovelBasicFormState()) : null
+  ));
+  const [basicForm, setBasicForm] = useState(() => patchNovelBasicForm(
+    createDefaultNovelBasicFormState(),
+    initialDraft?.basicForm ?? {},
+  ));
   const [restoredWorkflowTask, setRestoredWorkflowTask] = useState<UnifiedTaskDetail | null>(null);
-  const [activeStage, setActiveStage] = useState<AutoDirectorCreateStageKey>("idea");
-  const [completedStages, setCompletedStages] = useState<Set<AutoDirectorCreateStageKey>>(() => new Set());
+  const [activeStage, setActiveStage] = useState<AutoDirectorCreateStageKey>(initialDraft?.activeStage ?? "idea");
+  const [completedStages, setCompletedStages] = useState<Set<AutoDirectorCreateStageKey>>(
+    () => new Set(initialDraft?.completedStages ?? []),
+  );
   const restoreHandledRef = useRef<string | null>(null);
 
   const worldListQuery = useQuery({
@@ -136,9 +151,39 @@ export default function AutoDirectorCreatePage() {
     worldOptions,
     workflowTaskId: normalizedTaskId,
     restoredTask: restoredWorkflowTask,
+    initialDraft,
     onWorkflowTaskChange: replaceTaskId,
     onBasicFormChange: (patch) => setBasicForm((prev) => patchNovelBasicForm(prev, patch)),
   });
+
+  useEffect(() => {
+    if (!startedAsDraft) {
+      return;
+    }
+    if (controller.workflowTaskId) {
+      clearAutoDirectorCreateDraft(window.localStorage);
+      return;
+    }
+    saveAutoDirectorCreateDraft(window.localStorage, {
+      idea: controller.idea,
+      basicForm,
+      activeStage,
+      completedStages: [...completedStages],
+      runMode: controller.runMode,
+      worldSetupMode: controller.worldSetupMode,
+      selectedStyleProfileId: controller.selectedStyleProfileId,
+    });
+  }, [
+    activeStage,
+    basicForm,
+    completedStages,
+    controller.idea,
+    controller.runMode,
+    controller.selectedStyleProfileId,
+    controller.workflowTaskId,
+    controller.worldSetupMode,
+    startedAsDraft,
+  ]);
 
   useEffect(() => {
     if (controller.batches.length === 0 && !controller.hasActiveDirectorTask) {
@@ -294,6 +339,7 @@ export default function AutoDirectorCreatePage() {
           basicForm={controller.directorBasicForm}
           onBasicFormChange={controller.onBasicFormChange}
           canGenerate={controller.canGenerate}
+          generationDisabledReasons={controller.generationDisabledReasons}
           isGenerating={controller.generateMutation.isPending}
           onBack={() => setActiveStage("world_style")}
           onGenerate={startGenerate}

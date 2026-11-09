@@ -582,7 +582,7 @@ export const chapterArtifactDeltaPrompt: PromptAsset<
   ChapterArtifactDeltaOutput
 > = {
   id: "novel.chapter.artifact_delta.extract",
-  version: "v3",
+  version: "v4",
   taskType: "fact_extraction",
   mode: "structured",
   language: "zh",
@@ -619,7 +619,7 @@ export const chapterArtifactDeltaPrompt: PromptAsset<
       "5. 默认输出 delta；只有账本明显冲突、已兑现但找不到前置铺垫、关键线索跨多章错位、或本章集中处理多个 payoff 时，才建议 full_reconcile。",
       "6. syncPlan 由你判断，不要依赖关键词；如果没有对应变化，明确 skip 并说明 reason。",
       "7. 所有角色名优先使用已知角色名单；无法确认的新人物放入 characterCandidates，不要强行归到已有角色。",
-      "8. summary 必须使用简体中文，控制在 80-180 字，覆盖关键事件、冲突推进、人物状态变化、本章结果或悬念方向。",
+      "8. summary 必须使用简体中文，控制在 80-180 字，写清“发生了什么，以及留下了什么后果”，供下一章直接续写：关键事件及其造成的变化；会影响后文的人物处境（误判、嘴上表态与真实打算的差别、未消解的情绪或关系裂痕）；尚未兑现的承诺、代价或疑问。不写流水账，不用“关系更复杂”“气氛更紧张”这类空泛总结；只记正文已确立的事实，无关项省略。",
       "9. concreteFacts 只记录本章正文即兴产生且后续必须保持一致的硬事实，每条不超过 40 字；包括承诺、交易条款、事件性质、关键数字日期地点、身份与状态变化。",
       "10. concreteFacts.category 只能使用 completed、revealed、state_changed；无明确硬事实时输出 []，不得把抽象目标或氛围描述写入 concreteFacts。",
       "11. characterKnowledgeStates 只在本章存在显著信息差时填写；knownFacts 写该角色本章后明确知道的事实，hiddenFacts 写该角色仍不知道、后续不能让其超前知情的事实，每组最多 5 条；无信息差输出 []。",

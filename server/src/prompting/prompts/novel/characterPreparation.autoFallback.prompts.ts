@@ -23,7 +23,7 @@ export const characterCastAutoMembersPrompt: PromptAsset<
   z.infer<typeof characterCastAutoMembersResponseSchema>
 > = {
   id: "novel.character.castAuto.members",
-  version: "v1",
+  version: "v2",
   taskType: "planner",
   mode: "structured",
   language: "zh",

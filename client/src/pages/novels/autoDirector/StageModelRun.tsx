@@ -9,6 +9,7 @@ interface StageModelRunProps {
   basicForm: NovelBasicFormState;
   onBasicFormChange: (patch: Partial<NovelBasicFormState>) => void;
   canGenerate: boolean;
+  generationDisabledReasons: string[];
   isGenerating: boolean;
   onBack: () => void;
   onGenerate: () => void;
@@ -18,6 +19,7 @@ export default function StageModelRun({
   basicForm,
   onBasicFormChange,
   canGenerate,
+  generationDisabledReasons,
   isGenerating,
   onBack,
   onGenerate,
@@ -96,9 +98,21 @@ export default function StageModelRun({
 
       <div className="flex flex-col gap-2 pt-2 sm:flex-row sm:justify-between">
         <Button type="button" variant="ghost" onClick={onBack}>返回世界与写法</Button>
-        <Button type="button" onClick={onGenerate} disabled={!canGenerate}>
-          {isGenerating ? "生成中..." : "开始生成方向"}
-        </Button>
+        <div className="space-y-2 sm:max-w-md sm:text-right">
+          {!canGenerate ? (
+            <ul id="direction-generation-disabled-reasons" role="status" className="space-y-1 text-sm text-muted-foreground">
+              {generationDisabledReasons.map((reason) => <li key={reason}>{reason}</li>)}
+            </ul>
+          ) : null}
+          <Button
+            type="button"
+            onClick={onGenerate}
+            disabled={!canGenerate}
+            aria-describedby={!canGenerate ? "direction-generation-disabled-reasons" : undefined}
+          >
+            {isGenerating ? "生成中..." : "开始生成方向"}
+          </Button>
+        </div>
       </div>
     </section>
   );

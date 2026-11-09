@@ -153,10 +153,10 @@ test("prompt registry exposes versioned planning assets", () => {
     "novel.director.candidates@v2",
     "novel.director.candidate_patch@v1",
     "novel.director.blueprint@v1",
-    "novel.character.castOptions@v2",
-    "novel.character.castOptions.repair@v1",
+    "novel.character.castOptions@v3",
+    "novel.character.castOptions.repair@v2",
     "novel.character.castOptions.zhNormalize@v1",
-    "novel.character.supplemental@v1",
+    "novel.character.supplemental@v2",
     "novel.character.supplemental.zhNormalize@v1",
     "novel.character.mind.snapshot@v1",
     "novel.character.influence.options@v1",
@@ -414,7 +414,7 @@ test("prompt registry resolves style prompts by their declared asset versions", 
 });
 
 test("character cast prompt hardens real-name constraints and required gender output", () => {
-  const asset = getRegisteredPromptAsset("novel.character.castOptions", "v2");
+  const asset = getRegisteredPromptAsset("novel.character.castOptions", "v3");
   assert.ok(asset);
 
   const messages = asset.render({
@@ -2174,4 +2174,30 @@ test("streamStructuredPrompt can recover with semantic retry after streamed outp
     setPromptRunnerLLMFactoryForTests();
     setPromptRunnerStructuredInvokerForTests();
   }
+});
+
+test("character cast and supplemental context carry naming guidance", () => {
+  const {
+    buildCharacterCastContextBlocks,
+    buildSupplementalCharacterContextBlocks,
+  } = require("../dist/prompting/prompts/novel/characterPreparation.contextBlocks.js");
+  const castText = buildCharacterCastContextBlocks({ projectTitle: "测试", storyInput: "北境边城的驿卒卷入旧案。" })
+    .map((block) => block.content).join("\n");
+  assert.match(castText, /人物命名原则/);
+  assert.match(castText, /用户指定或已确认的姓名/);
+  const supplemental = buildSupplementalCharacterContextBlocks({
+    projectTitle: "测试", modeLabel: "补充", targetRoleLabel: "配角", requestedCountText: "1 名",
+  });
+  const naming = supplemental.find((block) => block.id === "supplemental_character_naming_policy");
+  assert.ok(naming?.required);
+  assert.match(naming.content, /人物命名原则/);
+});
+
+test("chapter artifact summary rule asks for consequences and unresolved items", () => {
+  const { chapterArtifactDeltaPrompt } = require("../dist/prompting/prompts/novel/chapterArtifactDelta.prompts.js");
+  assert.equal(chapterArtifactDeltaPrompt.version, "v4");
+  const messages = chapterArtifactDeltaPrompt.render({ novelTitle: "测试", chapterOrder: 1, chapterTitle: "开端", content: "正文" }, { blocks: [] });
+  const systemText = String(messages[0].content);
+  assert.match(systemText, /留下了什么后果/);
+  assert.match(systemText, /80-180/);
 });

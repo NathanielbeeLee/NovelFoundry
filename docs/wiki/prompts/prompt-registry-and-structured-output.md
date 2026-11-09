@@ -25,6 +25,20 @@ policy, slots, and output schema when structured output is required.
 
 ## Chapter artifact representation boundaries
 
+The chapter summary produced by artifact extraction is the next chapter's
+continuation note. It records what happened and the consequences left behind:
+changes caused by key events, character situations that affect later chapters
+(misjudgments, gaps between stated and real intent, unresolved emotional or
+relationship damage) and unfulfilled promises, costs or questions. It keeps
+the 80-180 character limit and only states facts established in the prose.
+Structured knowledge boundaries and mind deltas remain separate fields.
+
+Character cast, cast repair, automatic members and supplemental character
+prompts share one naming policy in `characterPreparation.contextBlocks.ts`.
+Names follow the story's era, region, age and family background. Names the
+author specified or confirmed stay stable unless the author asks to rename.
+Do not derive a name from a character's role, temperament or fate.
+
 `novel.chapter.artifact_delta.extract@v3` accepts JSON numeric strings for
 character-mind confidence only when the existing required 0..1 number schema
 accepts the decoded value. Missing confidence, percentages, labels, booleans,

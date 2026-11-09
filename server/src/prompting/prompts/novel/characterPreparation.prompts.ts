@@ -200,7 +200,7 @@ export const characterCastOptionPrompt: PromptAsset<
   z.infer<typeof characterCastOptionResponseSchema>
 > = {
   id: "novel.character.castOptions",
-  version: "v2",
+  version: "v3",
   taskType: "planner",
   mode: "structured",
   language: "zh",
@@ -284,7 +284,7 @@ export const characterCastOptionRepairPrompt: PromptAsset<
   z.infer<typeof characterCastOptionResponseSchema>
 > = {
   id: "novel.character.castOptions.repair",
-  version: "v1",
+  version: "v2",
   taskType: "planner",
   mode: "structured",
   language: "zh",
@@ -372,7 +372,7 @@ export const characterCastAutoPrompt: PromptAsset<
   z.infer<typeof characterCastAutoResponseSchema>
 > = {
   id: "novel.character.castAuto",
-  version: "v1",
+  version: "v2",
   taskType: "planner",
   mode: "structured",
   language: "zh",
@@ -455,7 +455,7 @@ export const characterCastAutoRepairPrompt: PromptAsset<
   z.infer<typeof characterCastAutoResponseSchema>
 > = {
   id: "novel.character.castAuto.repair",
-  version: "v1",
+  version: "v2",
   taskType: "planner",
   mode: "structured",
   language: "zh",
@@ -543,7 +543,7 @@ export const supplementalCharacterPrompt: PromptAsset<
   z.infer<typeof supplementalCharacterGenerationResponseSchema>
 > = {
   id: "novel.character.supplemental",
-  version: "v1",
+  version: "v2",
   taskType: "planner",
   mode: "structured",
   language: "zh",

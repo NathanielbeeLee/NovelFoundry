@@ -63,3 +63,19 @@ must still differ from the primary and include its recommendation reason.
 Keep catalog identities in the registered prompt input and version changes to
 post-validation semantics. This normalization removes avoidable formatting
 failures without creating a second planning or recommendation path.
+
+## Opening wizard drafts
+
+Before a director task exists, the auto-director opening wizard keeps a
+device-local draft of the idea, basic settings, world and style choices, run
+mode and the last unfinished step. A refresh or a later visit to the wizard
+without a task link restores that draft. Opening a task link never reads or
+overwrites the draft. Once the opening creates a director task, the task owns
+the opening state and the draft is cleared. Invalid saved values fall back to
+defaults instead of blocking the wizard. Storage that is full or unavailable
+leaves the wizard usable without a draft.
+
+The final step lists every unmet condition for starting direction generation
+next to the disabled button, from the same check that disables it. Add a new
+start condition to `domain/generationReadiness.ts` rather than only disabling
+the button.
