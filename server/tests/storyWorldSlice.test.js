@@ -1,8 +1,5 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { createHash } = require("node:crypto");
-const promptRunner = require("../dist/prompting/core/promptRunner.js");
-const { NovelWorldSliceService } = require("../dist/services/novel/storyWorldSlice/NovelWorldSliceService.js");
 const {
   buildStoryWorldSliceView,
   normalizeStoryWorldSlice,
@@ -162,100 +159,4 @@ test("buildStoryWorldSliceView exposes available options from structure", () => 
   assert.equal(view.availableForces[0].id, "force-lesheng");
   assert.equal(view.availableLocations[0].id, "location-office");
   assert.equal(view.isStale, true);
-});
-
-function createSliceGenerationFixture(t, savedSliceState) {
-  const structure = buildStructuredWorld();
-  const bindingSupport = buildWorldBindingSupport(structure);
-  const storyInput = "都市中的租房与职场竞争。";
-  const updatedAt = new Date("2026-03-20T00:00:00.000Z");
-  const slice = normalizeStoryWorldSlice({
-    raw: { coreWorldFrame: structure.profile.summary },
-    storyId: "novel-1",
-    worldId: "world-1",
-    sourceWorldUpdatedAt: updatedAt.toISOString(),
-    storyInputDigest: createHash("sha256").update(storyInput).digest("hex"),
-    builtFromStructuredData: true,
-    builderMode: "runtime",
-    structure,
-    bindingSupport,
-    overrides: {},
-  });
-  const savedSlice = savedSliceState === "stale"
-    ? { ...slice, metadata: { ...slice.metadata, storyInputDigest: "older-story" } }
-    : slice;
-  const service = new NovelWorldSliceService();
-  t.mock.method(service, "getNovelContext", async () => ({ id: "novel-1" }));
-  t.mock.method(service, "getActiveWorldSource", async () => ({
-    id: "world-1",
-    name: "都市试验场",
-    structureJson: JSON.stringify(structure),
-    bindingSupportJson: JSON.stringify(bindingSupport),
-    storySliceJson: savedSliceState ? JSON.stringify(savedSlice) : null,
-    storySliceOverridesJson: null,
-    updatedAt,
-  }));
-  const writes = t.mock.method(service, "persistSlice", async () => {});
-  const requests = t.mock.method(promptRunner, "runStructuredPrompt", async () => ({ output: slice }));
-  return { service, storyInput, slice, requests, writes };
-}
-
-test("automatic world-slice generation uses the caller model for missing and stale slices", async (t) => {
-  for (const state of [null, "stale"]) {
-    await t.test(state ?? "missing", async (caseTest) => {
-      const { service, storyInput, slice, requests, writes } = createSliceGenerationFixture(caseTest, state);
-      const result = await service.ensureStoryWorldSlice("novel-1", {
-        storyInput,
-        builderMode: "outline",
-        provider: "custom_world",
-        model: "world-model",
-        temperature: 0,
-      });
-
-      assert.equal(requests.mock.callCount(), 1);
-      assert.deepEqual(requests.mock.calls[0].arguments[0].options, {
-        provider: "custom_world",
-        model: "world-model",
-        temperature: 0,
-      });
-      assert.equal(requests.mock.calls[0].arguments[0].asset.id, "storyWorldSlice.generate");
-      assert.equal(result.metadata.builderMode, "outline");
-      assert.equal(result.coreWorldFrame, slice.coreWorldFrame);
-      assert.equal(writes.mock.callCount(), 1);
-    });
-  }
-});
-
-test("a valid saved world slice is reused without a model request when model choices change", async (t) => {
-  const { service, storyInput, slice, requests, writes } = createSliceGenerationFixture(t, "fresh");
-  const result = await service.ensureStoryWorldSlice("novel-1", {
-    storyInput,
-    provider: "custom_other_world",
-    model: "other-world-model",
-    temperature: 0.5,
-  });
-
-  assert.deepEqual(result, slice);
-  assert.equal(requests.mock.callCount(), 0);
-  assert.equal(writes.mock.callCount(), 0);
-});
-
-test("explicit world-slice refresh preserves model choices and rebuilds a valid saved slice", async (t) => {
-  const { service, storyInput, requests, writes } = createSliceGenerationFixture(t, "fresh");
-  const result = await service.refreshWorldSlice("novel-1", {
-    storyInput,
-    provider: "custom_world",
-    model: "world-model",
-    temperature: 0,
-  });
-
-  assert.equal(requests.mock.callCount(), 1);
-  assert.deepEqual(requests.mock.calls[0].arguments[0].options, {
-    provider: "custom_world",
-    model: "world-model",
-    temperature: 0,
-  });
-  assert.equal(result.slice.metadata.builderMode, "manual_refresh");
-  assert.equal(result.isStale, false);
-  assert.equal(writes.mock.callCount(), 1);
 });

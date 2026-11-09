@@ -66,14 +66,6 @@ view, uncertainty, and established world facts. Fix the affected span with the
 smallest useful edit. Do not invent details to make prose seem concrete or
 flatten an intentional literary voice into generic conversational language.
 
-The chapter writer and official advanced-template defaults judge paragraphs by
-their contribution to the current scene. Necessary transitions, reactions and
-quiet aftermath may serve one purpose; each paragraph has no fixed quota of
-narrative functions. Setting details can open a chapter when they affect present
-perception, action or pressure. Chapter missions, reader rewards, obligations,
-continuity and length requirements still govern the complete chapter. Existing
-author templates retain their saved content.
-
 `style.detection@v4` requires every finding's excerpt to occur verbatim in the
 submitted manuscript. A missing or paraphrased quote fails post-validation;
 never remove that finding and return a clean assessment. The check only grounds

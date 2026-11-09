@@ -6,17 +6,6 @@ below; their source evidence is retained in local maintainer archives.
 
 ## History
 
-### 2026-11-09
-
-- AI tasks respect configured output allowances, giving longer results room to
-  finish within their prompt and provider limits.
-- World context preparation uses your selected model for both initial
-  generation and refresh.
-- Creative Hub, book analysis and execution results display Markdown tables
-  with horizontal scrolling for wide content.
-- Chapter writing guidance allows purposeful transitions and quieter reactions,
-  with paragraph shape and opening details driven by the scene.
-
 ### 2026-10-29
 
 - Chapter information shows whether summaries, character and story state, timelines, and retrieval data correspond to saved prose, with separate pending, failed, outdated, partial and unconfirmed results. Refreshing this view only reads status.
